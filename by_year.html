@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CV+ML Papers by Year</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body { font-family: -apple-system,"Segoe UI",sans-serif; margin:20px; background:#fafafa; color:#222; }
+.brand { font-size:12px; color:#888; margin-bottom:4px; }
+.brand a { color:inherit; text-decoration:none; font-weight:600; }
+.brand a:hover { color:#1f77b4; }
+h1 { font-size:22px; margin:0 0 4px; }
+.sub { color:#666; font-size:13px; margin-bottom:16px; }
+.summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin-bottom:16px; }
+.card { background:#fff; border:1px solid #e5e5e5; border-radius:8px; padding:10px 14px; }
+.card .num { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; }
+.card .label { color:#666; font-size:11px; margin-top:2px; }
+.card.total-card .num { font-size:22px; }
+.wrap { background:#fff; border:1px solid #e5e5e5; border-radius:8px; padding:14px 16px; margin-bottom:16px; }
+h2 { font-size:14px; margin:0 0 10px; color:#333; }
+canvas { max-height:380px; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th,td { border-bottom:1px solid #eee; padding:5px 8px; text-align:right; }
+th { background:#f4f4f4; font-weight:600; font-size:11px; }
+td.yr { text-align:left; font-weight:600; color:#333; }
+td.total { font-weight:700; color:#222; }
+  .card.v-cvpr { border-top: 3px solid #1f77b4; }
+  .card.v-iccv { border-top: 3px solid #4da6e8; }
+  .card.v-eccv { border-top: 3px solid #2ca02c; }
+  .card.v-3dv { border-top: 3px solid #17becf; }
+  .card.v-neurips { border-top: 3px solid #d62728; }
+  .card.v-icml { border-top: 3px solid #ff7f0e; }
+  .card.v-iclr { border-top: 3px solid #e87c2f; }
+
+  td.c-cvpr { color: #1f77b4; font-variant-numeric: tabular-nums; }
+  td.c-iccv { color: #4da6e8; font-variant-numeric: tabular-nums; }
+  td.c-eccv { color: #2ca02c; font-variant-numeric: tabular-nums; }
+  td.c-3dv { color: #17becf; font-variant-numeric: tabular-nums; }
+  td.c-neurips { color: #d62728; font-variant-numeric: tabular-nums; }
+  td.c-icml { color: #ff7f0e; font-variant-numeric: tabular-nums; }
+  td.c-iclr { color: #e87c2f; font-variant-numeric: tabular-nums; }
+
+nav { margin-bottom:12px; font-size:13px; }
+nav a { color:#1f77b4; text-decoration:none; margin-right:14px; }
+nav a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="brand"><a href="index.html">CV+ML Paper Atlas</a></div>
+<h1>CV+ML Papers by Year</h1>
+<div class="sub">Citations as of 2026-04-28 &nbsp;·&nbsp; Peak year: <b>2024</b> (16,203 papers)</div>
+
+<nav>
+  <a href="index.html">← Home</a>
+  <a href="explorer.html">Paper Explorer</a>
+  <a href="coauthor_network.html">Co-author Network</a>
+  <a href="dataset_preview.html">Dataset Preview</a>
+</nav>
+
+<div class="summary">
+  <div class="card total-card" style="border-top:3px solid #222;">
+    <div class="num">111,939</div>
+    <div class="label">Total papers</div>
+  </div>
+  <div class="card v-cvpr"><div class="num">31,548</div><div class="label">CVPR (1983~)</div></div>
+  <div class="card v-iccv"><div class="num">12,564</div><div class="label">ICCV (1987~)</div></div>
+  <div class="card v-eccv"><div class="num">11,760</div><div class="label">ECCV (1990~)</div></div>
+  <div class="card v-3dv"><div class="num">1,617</div><div class="label">3DV (1999~)</div></div>
+  <div class="card v-neurips"><div class="num">25,165</div><div class="label">NeurIPS (1987~)</div></div>
+  <div class="card v-icml"><div class="num">17,032</div><div class="label">ICML (1980~)</div></div>
+  <div class="card v-iclr"><div class="num">12,253</div><div class="label">ICLR (2013~)</div></div>
+</div>
+
+<div class="wrap">
+  <h2>📈 Publications per year (stacked)</h2>
+  <canvas id="chart-stacked"></canvas>
+</div>
+
+<div class="wrap">
+  <h2>📊 Year-by-year table</h2>
+  <table>
+    <thead><tr><th style="text-align:left">Year</th><th class="c-cvpr">CVPR</th><th class="c-iccv">ICCV</th><th class="c-eccv">ECCV</th><th class="c-3dv">3DV</th><th class="c-neurips">NeurIPS</th><th class="c-icml">ICML</th><th class="c-iclr">ICLR</th><th>Total</th></tr></thead>
+    <tbody><tr><td class="yr">2025</td><td class="c-cvpr">3530</td><td class="c-iccv">794</td><td class="c-eccv"></td><td class="c-3dv">142</td><td class="c-neurips"></td><td class="c-icml">3342</td><td class="c-iclr">3704</td><td class="total">11,512</td></tr><tr><td class="yr">2024</td><td class="c-cvpr">3531</td><td class="c-iccv"></td><td class="c-eccv">2958</td><td class="c-3dv">154</td><td class="c-neurips">4495</td><td class="c-icml">2611</td><td class="c-iclr">2454</td><td class="total">16,203</td></tr><tr><td class="yr">2023</td><td class="c-cvpr">3051</td><td class="c-iccv">2654</td><td class="c-eccv">8</td><td class="c-3dv"></td><td class="c-neurips">3541</td><td class="c-icml">1829</td><td class="c-iclr">1793</td><td class="total">12,876</td></tr><tr><td class="yr">2022</td><td class="c-cvpr">2627</td><td class="c-iccv"></td><td class="c-eccv">2050</td><td class="c-3dv">72</td><td class="c-neurips">2852</td><td class="c-icml">1249</td><td class="c-iclr">1094</td><td class="total">9,944</td></tr><tr><td class="yr">2021</td><td class="c-cvpr">2174</td><td class="c-iccv">2076</td><td class="c-eccv"></td><td class="c-3dv">141</td><td class="c-neurips">2564</td><td class="c-icml">1183</td><td class="c-iclr">860</td><td class="total">8,998</td></tr><tr><td class="yr">2020</td><td class="c-cvpr">1984</td><td class="c-iccv"></td><td class="c-eccv">1674</td><td class="c-3dv">125</td><td class="c-neurips">1919</td><td class="c-icml">1085</td><td class="c-iclr">687</td><td class="total">7,474</td></tr><tr><td class="yr">2019</td><td class="c-cvpr">1882</td><td class="c-iccv">1635</td><td class="c-eccv">6</td><td class="c-3dv">79</td><td class="c-neurips">1449</td><td class="c-icml">774</td><td class="c-iclr">502</td><td class="total">6,327</td></tr><tr><td class="yr">2018</td><td class="c-cvpr">1326</td><td class="c-iccv"></td><td class="c-eccv">1116</td><td class="c-3dv">81</td><td class="c-neurips">1010</td><td class="c-icml">621</td><td class="c-iclr">531</td><td class="total">4,685</td></tr><tr><td class="yr">2017</td><td class="c-cvpr">1064</td><td class="c-iccv">990</td><td class="c-eccv"></td><td class="c-3dv">73</td><td class="c-neurips">678</td><td class="c-icml">434</td><td class="c-iclr">309</td><td class="total">3,548</td></tr><tr><td class="yr">2016</td><td class="c-cvpr">836</td><td class="c-iccv"></td><td class="c-eccv">622</td><td class="c-3dv">75</td><td class="c-neurips">567</td><td class="c-icml">322</td><td class="c-iclr">81</td><td class="total">2,503</td></tr><tr><td class="yr">2015</td><td class="c-cvpr">733</td><td class="c-iccv">659</td><td class="c-eccv">4</td><td class="c-3dv">75</td><td class="c-neurips">404</td><td class="c-icml">270</td><td class="c-iclr">106</td><td class="total">2,251</td></tr><tr><td class="yr">2014</td><td class="c-cvpr">666</td><td class="c-iccv"></td><td class="c-eccv">573</td><td class="c-3dv">119</td><td class="c-neurips">412</td><td class="c-icml">310</td><td class="c-iclr">75</td><td class="total">2,155</td></tr><tr><td class="yr">2013</td><td class="c-cvpr">627</td><td class="c-iccv">578</td><td class="c-eccv"></td><td class="c-3dv">56</td><td class="c-neurips">361</td><td class="c-icml">283</td><td class="c-iclr">57</td><td class="total">1,962</td></tr><tr><td class="yr">2012</td><td class="c-cvpr">609</td><td class="c-iccv"></td><td class="c-eccv">621</td><td class="c-3dv">75</td><td class="c-neurips">372</td><td class="c-icml">267</td><td class="c-iclr"></td><td class="total">1,944</td></tr><tr><td class="yr">2011</td><td class="c-cvpr">583</td><td class="c-iccv">646</td><td class="c-eccv"></td><td class="c-3dv">55</td><td class="c-neurips">345</td><td class="c-icml">159</td><td class="c-iclr"></td><td class="total">1,788</td></tr><tr><td class="yr">2010</td><td class="c-cvpr">692</td><td class="c-iccv"></td><td class="c-eccv">394</td><td class="c-3dv"></td><td class="c-neurips">315</td><td class="c-icml">159</td><td class="c-iclr"></td><td class="total">1,560</td></tr><tr><td class="yr">2009</td><td class="c-cvpr">525</td><td class="c-iccv">598</td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">264</td><td class="c-icml">179</td><td class="c-iclr"></td><td class="total">1,566</td></tr><tr><td class="yr">2008</td><td class="c-cvpr">741</td><td class="c-iccv"></td><td class="c-eccv">248</td><td class="c-3dv"></td><td class="c-neurips">251</td><td class="c-icml">158</td><td class="c-iclr"></td><td class="total">1,398</td></tr><tr><td class="yr">2007</td><td class="c-cvpr">537</td><td class="c-iccv">406</td><td class="c-eccv">1</td><td class="c-3dv">53</td><td class="c-neurips">218</td><td class="c-icml">151</td><td class="c-iclr"></td><td class="total">1,366</td></tr><tr><td class="yr">2006</td><td class="c-cvpr">517</td><td class="c-iccv"></td><td class="c-eccv">255</td><td class="c-3dv"></td><td class="c-neurips">204</td><td class="c-icml">141</td><td class="c-iclr"></td><td class="total">1,117</td></tr><tr><td class="yr">2005</td><td class="c-cvpr">521</td><td class="c-iccv">267</td><td class="c-eccv"></td><td class="c-3dv">74</td><td class="c-neurips">207</td><td class="c-icml">135</td><td class="c-iclr"></td><td class="total">1,204</td></tr><tr><td class="yr">2004</td><td class="c-cvpr">446</td><td class="c-iccv"></td><td class="c-eccv">301</td><td class="c-3dv"></td><td class="c-neurips">208</td><td class="c-icml">118</td><td class="c-iclr"></td><td class="total">1,073</td></tr><tr><td class="yr">2003</td><td class="c-cvpr">307</td><td class="c-iccv">199</td><td class="c-eccv"></td><td class="c-3dv">61</td><td class="c-neurips">199</td><td class="c-icml">118</td><td class="c-iclr"></td><td class="total">884</td></tr><tr><td class="yr">2002</td><td class="c-cvpr"></td><td class="c-iccv"></td><td class="c-eccv">250</td><td class="c-3dv"></td><td class="c-neurips">207</td><td class="c-icml">88</td><td class="c-iclr"></td><td class="total">545</td></tr><tr><td class="yr">2001</td><td class="c-cvpr">273</td><td class="c-iccv">219</td><td class="c-eccv"></td><td class="c-3dv">49</td><td class="c-neurips">199</td><td class="c-icml">80</td><td class="c-iclr"></td><td class="total">820</td></tr><tr><td class="yr">2000</td><td class="c-cvpr">229</td><td class="c-iccv">1</td><td class="c-eccv">118</td><td class="c-3dv"></td><td class="c-neurips">154</td><td class="c-icml">151</td><td class="c-iclr"></td><td class="total">653</td></tr><tr><td class="yr">1999</td><td class="c-cvpr">192</td><td class="c-iccv">198</td><td class="c-eccv"></td><td class="c-3dv">58</td><td class="c-neurips">151</td><td class="c-icml">54</td><td class="c-iclr"></td><td class="total">653</td></tr><tr><td class="yr">1998</td><td class="c-cvpr">143</td><td class="c-iccv">167</td><td class="c-eccv">114</td><td class="c-3dv"></td><td class="c-neurips">152</td><td class="c-icml">66</td><td class="c-iclr"></td><td class="total">642</td></tr><tr><td class="yr">1997</td><td class="c-cvpr">171</td><td class="c-iccv"></td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">157</td><td class="c-icml">48</td><td class="c-iclr"></td><td class="total">376</td></tr><tr><td class="yr">1996</td><td class="c-cvpr">137</td><td class="c-iccv"></td><td class="c-eccv">145</td><td class="c-3dv"></td><td class="c-neurips">152</td><td class="c-icml">67</td><td class="c-iclr"></td><td class="total">501</td></tr><tr><td class="yr">1995</td><td class="c-cvpr"></td><td class="c-iccv">162</td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">153</td><td class="c-icml">72</td><td class="c-iclr"></td><td class="total">387</td></tr><tr><td class="yr">1994</td><td class="c-cvpr">165</td><td class="c-iccv"></td><td class="c-eccv">116</td><td class="c-3dv"></td><td class="c-neurips">141</td><td class="c-icml">46</td><td class="c-iclr"></td><td class="total">468</td></tr><tr><td class="yr">1993</td><td class="c-cvpr">186</td><td class="c-iccv">101</td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">159</td><td class="c-icml">45</td><td class="c-iclr"></td><td class="total">491</td></tr><tr><td class="yr">1992</td><td class="c-cvpr">159</td><td class="c-iccv"></td><td class="c-eccv">106</td><td class="c-3dv"></td><td class="c-neurips">128</td><td class="c-icml">60</td><td class="c-iclr"></td><td class="total">453</td></tr><tr><td class="yr">1991</td><td class="c-cvpr">146</td><td class="c-iccv"></td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">145</td><td class="c-icml">128</td><td class="c-iclr"></td><td class="total">419</td></tr><tr><td class="yr">1990</td><td class="c-cvpr"></td><td class="c-iccv">126</td><td class="c-eccv">80</td><td class="c-3dv"></td><td class="c-neurips">144</td><td class="c-icml">51</td><td class="c-iclr"></td><td class="total">401</td></tr><tr><td class="yr">1989</td><td class="c-cvpr">97</td><td class="c-iccv"></td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">102</td><td class="c-icml">128</td><td class="c-iclr"></td><td class="total">327</td></tr><tr><td class="yr">1988</td><td class="c-cvpr">141</td><td class="c-iccv">88</td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">96</td><td class="c-icml">50</td><td class="c-iclr"></td><td class="total">375</td></tr><tr><td class="yr">1987</td><td class="c-cvpr"></td><td class="c-iccv"></td><td class="c-eccv"></td><td class="c-3dv"></td><td class="c-neurips">90</td><td class="c-icml"></td><td class="c-iclr"></td><td class="total">90</td></tr></tbody>
+  </table>
+</div>
+
+<script>
+new Chart(document.getElementById('chart-stacked'), {
+  type: 'bar',
+  data: {
+    labels: [1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+    datasets: [{"label": "CVPR", "data": [0, 141, 97, 0, 146, 159, 186, 165, 0, 137, 171, 143, 192, 229, 273, 0, 307, 446, 521, 517, 537, 741, 525, 692, 583, 609, 627, 666, 733, 836, 1064, 1326, 1882, 1984, 2174, 2627, 3051, 3531, 3530], "backgroundColor": "#1f77b4cc", "stack": "a"}, {"label": "ICCV", "data": [0, 88, 0, 126, 0, 0, 101, 0, 162, 0, 0, 167, 198, 1, 219, 0, 199, 0, 267, 0, 406, 0, 598, 0, 646, 0, 578, 0, 659, 0, 990, 0, 1635, 0, 2076, 0, 2654, 0, 794], "backgroundColor": "#4da6e8cc", "stack": "a"}, {"label": "ECCV", "data": [0, 0, 0, 80, 0, 106, 0, 116, 0, 145, 0, 114, 0, 118, 0, 250, 0, 301, 0, 255, 1, 248, 0, 394, 0, 621, 0, 573, 4, 622, 0, 1116, 6, 1674, 0, 2050, 8, 2958, 0], "backgroundColor": "#2ca02ccc", "stack": "a"}, {"label": "3DV", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 0, 49, 0, 61, 0, 74, 0, 53, 0, 0, 0, 55, 75, 56, 119, 75, 75, 73, 81, 79, 125, 141, 72, 0, 154, 142], "backgroundColor": "#17becfcc", "stack": "a"}, {"label": "NeurIPS", "data": [90, 96, 102, 144, 145, 128, 159, 141, 153, 152, 157, 152, 151, 154, 199, 207, 199, 208, 207, 204, 218, 251, 264, 315, 345, 372, 361, 412, 404, 567, 678, 1010, 1449, 1919, 2564, 2852, 3541, 4495, 0], "backgroundColor": "#d62728cc", "stack": "a"}, {"label": "ICML", "data": [0, 50, 128, 51, 128, 60, 45, 46, 72, 67, 48, 66, 54, 151, 80, 88, 118, 118, 135, 141, 151, 158, 179, 159, 159, 267, 283, 310, 270, 322, 434, 621, 774, 1085, 1183, 1249, 1829, 2611, 3342], "backgroundColor": "#ff7f0ecc", "stack": "a"}, {"label": "ICLR", "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 75, 106, 81, 309, 531, 502, 687, 860, 1094, 1793, 2454, 3704], "backgroundColor": "#e87c2fcc", "stack": "a"}],
+  },
+  options: {
+    responsive: true, animation: false,
+    plugins: { legend: { position:'top', labels:{ boxWidth:12, font:{ size:11 } } } },
+    scales: {
+      x: { stacked:true, ticks:{ maxRotation:45, font:{ size:10 } } },
+      y: { stacked:true, ticks:{ font:{ size:10 } } },
+    },
+  },
+});
+</script>
+</body>
+</html>

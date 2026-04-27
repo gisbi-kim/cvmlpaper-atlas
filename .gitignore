@@ -1,0 +1,16 @@
+# Raw data (large — rebuild with step1/step2)
+all_dblp.json
+all_enriched.json
+all_dblp_*.json
+dblp_raw/
+enriched_checkpoint_*.json
+word_book.json
+word_book.csv
+coauthor_network.json
+
+# Logs & build artifacts
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
