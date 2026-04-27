@@ -258,10 +258,9 @@ HTML = f"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>CV+ML Co-author Network</title>
-<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <style>
-* {{ box-sizing: border-box; }}
-body {{ font-family: -apple-system,"Segoe UI",sans-serif; margin:0; background:#111; color:#eee; overflow:hidden; }}
+* {{ box-sizing: border-box; margin:0; padding:0; }}
+body {{ font-family: -apple-system,"Segoe UI",sans-serif; background:#111; color:#eee; overflow:hidden; }}
 
 #controls {{
   position:fixed; top:12px; left:12px; z-index:10;
@@ -272,27 +271,20 @@ body {{ font-family: -apple-system,"Segoe UI",sans-serif; margin:0; background:#
 #controls label {{ display:block; margin:8px 0 2px; color:#aaa; font-size:12px; }}
 #controls input[type=range] {{ width:100%; accent-color:#9467bd; }}
 .val {{ color:#fff; font-weight:600; }}
-
-#legend {{
-  margin-top:14px; padding-top:12px; border-top:1px solid #333;
-}}
+#legend {{ margin-top:14px; padding-top:12px; border-top:1px solid #333; }}
 #legend h3 {{ margin:0 0 8px; font-size:12px; color:#999; text-transform:uppercase; letter-spacing:0.5px; }}
 .legend-row {{ display:flex; align-items:center; gap:8px; margin:5px 0; font-size:12px; color:#ccc; }}
 .legend-dot {{ width:12px; height:12px; border-radius:50%; flex-shrink:0; }}
 .legend-count {{ color:#666; font-size:11px; margin-left:auto; }}
-
 #color-by {{
-  margin-top:10px;
-  display:flex; gap:0; border:1px solid #444; border-radius:6px; overflow:hidden;
+  margin-top:10px; display:flex; border:1px solid #444; border-radius:6px; overflow:hidden;
 }}
 #color-by button {{
   flex:1; padding:5px 0; font-size:12px; border:none; cursor:pointer;
-  background:#222; color:#888; transition:all 0.15s;
+  background:#222; color:#888; transition:background 0.15s;
 }}
 #color-by button.active {{ background:#9467bd; color:#fff; }}
-
 #stats {{ margin-top:10px; font-size:11px; color:#666; line-height:1.6; }}
-
 #info {{
   position:fixed; bottom:16px; left:12px; z-index:10;
   background:rgba(18,18,18,0.92); border:1px solid #333;
@@ -308,49 +300,42 @@ body {{ font-family: -apple-system,"Segoe UI",sans-serif; margin:0; background:#
 #info .row b {{ color:#eee; }}
 .close-btn {{ float:right; cursor:pointer; color:#666; font-size:14px; margin-top:-2px; }}
 .close-btn:hover {{ color:#fff; }}
-
-svg {{ width:100vw; height:100vh; cursor:grab; }}
-svg:active {{ cursor:grabbing; }}
+canvas {{ display:block; cursor:grab; }}
+canvas.panning {{ cursor:grabbing; }}
 </style>
 </head>
 <body>
 <div id="controls">
   <h2>CV+ML Co-author Network</h2>
-
   <label>Min collaborations: <span class="val" id="edge-val">{DEFAULT_EDGE_VIEW}</span></label>
   <input type="range" id="edge-slider" min="{MIN_EDGE_COLLABS}" max="20" value="{DEFAULT_EDGE_VIEW}">
-
   <label>Node size by:</label>
   <select id="size-by" style="width:100%;padding:4px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;">
     <option value="papers">Paper count</option>
     <option value="citations">Total citations</option>
   </select>
-
   <label style="margin-top:10px;">Color by:</label>
   <div id="color-by">
     <button class="active" onclick="setColorMode('cluster')">CV / ML Cluster</button>
     <button onclick="setColorMode('venue')">Dominant Venue</button>
   </div>
-
   <div id="legend">
     <h3>Cluster</h3>
     <div class="legend-row">
       <div class="legend-dot" style="background:#1f77b4"></div>
-      CV &nbsp;<small style="color:#666">(CVPR·ICCV·ECCV·3DV)</small>
+      CV <small style="color:#666">(CVPR·ICCV·ECCV·3DV)</small>
       <span class="legend-count" id="cnt-cv">-</span>
     </div>
     <div class="legend-row">
       <div class="legend-dot" style="background:#d62728"></div>
-      ML &nbsp;<small style="color:#666">(NeurIPS·ICML·ICLR)</small>
+      ML <small style="color:#666">(NeurIPS·ICML·ICLR)</small>
       <span class="legend-count" id="cnt-ml">-</span>
     </div>
     <div class="legend-row">
       <div class="legend-dot" style="background:#9467bd"></div>
-      Mixed
-      <span class="legend-count" id="cnt-mix">-</span>
+      Mixed <span class="legend-count" id="cnt-mix">-</span>
     </div>
   </div>
-
   <div id="stats"></div>
 </div>
 
@@ -366,41 +351,35 @@ svg:active {{ cursor:grabbing; }}
   <div class="row"><span>Last active</span><b id="info-year"></b></div>
 </div>
 
-<svg id="svg"></svg>
+<canvas id="canvas"></canvas>
 
 <script>
 const DATA           = {data_js};
 const CLUSTER_COLORS = {cluster_colors_js};
 const VENUE_COLORS   = {venue_colors_js};
-const MIN_EDGE       = {MIN_EDGE_COLLABS};
 const DEF_EDGE       = {DEFAULT_EDGE_VIEW};
+const MIN_EDGE       = {MIN_EDGE_COLLABS};
 
-// ── Legend counts ────────────────────────────────────────────────────────────
+// Legend counts
 const cc = DATA.meta.cluster_counts || {{}};
 document.getElementById('cnt-cv').textContent  = (cc.CV    || 0).toLocaleString();
 document.getElementById('cnt-ml').textContent  = (cc.ML    || 0).toLocaleString();
 document.getElementById('cnt-mix').textContent = (cc.Mixed || 0).toLocaleString();
 
-let colorMode     = 'cluster';
-let edgeThreshold = DEF_EDGE;
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+function resize() {{
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  draw();
+}}
+window.addEventListener('resize', resize);
+canvas.width  = window.innerWidth;
+canvas.height = window.innerHeight;
+const W = () => canvas.width, H = () => canvas.height;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function nodeColor(d) {{
-  return colorMode === 'venue'
-    ? (VENUE_COLORS[d.dominant_venue] || '#aaa')
-    : (CLUSTER_COLORS[d.cluster]      || '#aaa');
-}}
-function nodeRadius(d) {{
-  return document.getElementById('size-by').value === 'citations'
-    ? Math.sqrt(d.total_citations / 80 + 1) * 3.5
-    : Math.sqrt(d.papers) * 4.5;
-}}
-function edgeColor(d) {{
-  return colorMode === 'venue' ? '#444' : (d.color || '#444');
-}}
-
-// ── Pre-baked positions ──────────────────────────────────────────────────────
-// Assign working position from stored layout (draggable at runtime)
+// ── Node data setup ───────────────────────────────────────────────────────────
 const nodeById = {{}};
 DATA.nodes.forEach(n => {{
   n.px = n.x || 0;
@@ -408,142 +387,301 @@ DATA.nodes.forEach(n => {{
   nodeById[n.id] = n;
 }});
 
-// Adjacency: node id → connected edges (for fast drag updates)
-const nodeEdges = {{}};
+// Per-node edge list for drag updates
+const nodeEdgeList = {{}};
 DATA.edges.forEach(e => {{
-  (nodeEdges[e.source] = nodeEdges[e.source] || []).push(e);
-  (nodeEdges[e.target] = nodeEdges[e.target] || []).push(e);
+  (nodeEdgeList[e.source] = nodeEdgeList[e.source] || []).push(e);
+  (nodeEdgeList[e.target] = nodeEdgeList[e.target] || []).push(e);
 }});
 
-// ── SVG & zoom ───────────────────────────────────────────────────────────────
-const W = window.innerWidth, H = window.innerHeight;
-const svg = d3.select('#svg');
-const g   = svg.append('g');
-
-const zoom = d3.zoom().scaleExtent([0.02, 12])
-  .on('zoom', ev => g.attr('transform', ev.transform));
-svg.call(zoom);
-
-// Fit precomputed layout into viewport
+// ── Initial viewport transform ────────────────────────────────────────────────
 const allPX = DATA.nodes.map(n => n.px);
 const allPY = DATA.nodes.map(n => n.py);
 const gxMin = allPX.reduce((a,b) => Math.min(a,b),  Infinity);
 const gxMax = allPX.reduce((a,b) => Math.max(a,b), -Infinity);
 const gyMin = allPY.reduce((a,b) => Math.min(a,b),  Infinity);
 const gyMax = allPY.reduce((a,b) => Math.max(a,b), -Infinity);
-const initScale = Math.min(
-  (W * 0.80) / Math.max(gxMax - gxMin, 1),
-  (H * 0.80) / Math.max(gyMax - gyMin, 1)
+let scale = Math.min(
+  W() * 0.78 / Math.max(gxMax - gxMin, 1),
+  H() * 0.78 / Math.max(gyMax - gyMin, 1)
 );
-svg.call(zoom.transform, d3.zoomIdentity
-  .translate(W / 2, H / 2)
-  .scale(initScale)
-  .translate(-(gxMin + gxMax) / 2, -(gyMin + gyMax) / 2));
+let tx = W()/2 - (gxMin + gxMax)/2 * scale;
+let ty = H()/2 - (gyMin + gyMax)/2 * scale;
 
-// ── Draw all edges once ──────────────────────────────────────────────────────
-let linkSel = g.append('g').attr('class', 'edges')
-  .selectAll('line').data(DATA.edges).join('line')
-  .attr('x1', e => nodeById[e.source].px)
-  .attr('y1', e => nodeById[e.source].py)
-  .attr('x2', e => nodeById[e.target].px)
-  .attr('y2', e => nodeById[e.target].py)
-  .attr('stroke', edgeColor)
-  .attr('stroke-opacity', 0.4)
-  .attr('stroke-width', d => Math.sqrt(d.weight) * 0.8);
+// ── State ─────────────────────────────────────────────────────────────────────
+let colorMode    = 'cluster';
+let sizeMode     = 'papers';
+let edgeThreshold = DEF_EDGE;
+let visEdges     = [], visNodes = [], visNodeSet = new Set();
+let hoveredNode  = null;
+let selectedNode = null;
+let dragNode     = null, dragOffGX = 0, dragOffGY = 0;
+let isPanning    = false, panSX = 0, panSY = 0;
+let rafId        = null;
 
-// Store DOM reference in edge data for O(degree) drag updates
-linkSel.each(function(e) {{ e._el = this; }});
-
-// ── Draw all nodes once ──────────────────────────────────────────────────────
-let nodeSel = g.append('g').attr('class', 'nodes')
-  .selectAll('g').data(DATA.nodes).join('g')
-  .attr('transform', d => `translate(${{d.px}},${{d.py}})`)
-  .call(d3.drag()
-    .on('drag', function(ev, d) {{
-      d.px = ev.x; d.py = ev.y;
-      d3.select(this).attr('transform', `translate(${{d.px}},${{d.py}})`);
-      // Update only edges connected to this node
-      (nodeEdges[d.id] || []).forEach(e => {{
-        if (!e._el) return;
-        const s = nodeById[e.source], t = nodeById[e.target];
-        e._el.setAttribute('x1', s.px); e._el.setAttribute('y1', s.py);
-        e._el.setAttribute('x2', t.px); e._el.setAttribute('y2', t.py);
-      }});
-    }}))
-  .on('click', (_, d) => showInfo(d));
-
-nodeSel.append('circle')
-  .attr('r', nodeRadius)
-  .attr('fill', nodeColor)
-  .attr('stroke', '#111')
-  .attr('stroke-width', 1.2)
-  .attr('opacity', 0.88);
-
-nodeSel.append('title').text(d =>
-  `${{d.name}} (${{d.cluster}}) — ${{d.papers}} papers · ${{d.total_citations.toLocaleString()}} citations`
-);
-
-// ── Filter: toggle display only (instant, no re-layout) ──────────────────────
-function applyFilter() {{
-  const visNodes = new Set();
-  linkSel.attr('display', function(e) {{
-    const show = e.weight >= edgeThreshold;
-    if (show) {{ visNodes.add(e.source); visNodes.add(e.target); }}
-    return show ? null : 'none';
-  }});
-  nodeSel.attr('display', d => visNodes.has(d.id) ? null : 'none');
-
-  const nVis  = visNodes.size;
-  const eVis  = DATA.edges.filter(e => e.weight >= edgeThreshold).length;
-  const cvN   = [...visNodes].filter(id => nodeById[id].cluster === 'CV').length;
-  const mlN   = [...visNodes].filter(id => nodeById[id].cluster === 'ML').length;
-  const mixN  = nVis - cvN - mlN;
-  document.getElementById('stats').innerHTML =
-    `${{nVis.toLocaleString()}} researchers · ${{eVis.toLocaleString()}} pairs<br>` +
-    `<span style="color:#1f77b4">CV: ${{cvN}}</span> &nbsp; ` +
-    `<span style="color:#d62728">ML: ${{mlN}}</span> &nbsp; ` +
-    `<span style="color:#9467bd">Mixed: ${{mixN}}</span>`;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function nodeColor(n) {{
+  return colorMode === 'venue'
+    ? (VENUE_COLORS[n.dominant_venue] || '#aaa')
+    : (CLUSTER_COLORS[n.cluster]      || '#aaa');
+}}
+function nodeR(n) {{
+  return sizeMode === 'citations'
+    ? Math.max(2, Math.sqrt(n.total_citations / 80 + 1) * 3.5)
+    : Math.max(2, Math.sqrt(n.papers) * 4.5);
+}}
+function edgeCol(e) {{
+  return colorMode === 'venue' ? '#555' : (e.color || '#555');
+}}
+function s2g(sx, sy) {{   // screen → graph coords
+  return [(sx - tx) / scale, (sy - ty) / scale];
 }}
 
-// ── Info panel ───────────────────────────────────────────────────────────────
+// ── Filter ────────────────────────────────────────────────────────────────────
+function applyFilter() {{
+  visEdges   = DATA.edges.filter(e => e.weight >= edgeThreshold);
+  visNodeSet = new Set();
+  visEdges.forEach(e => {{ visNodeSet.add(e.source); visNodeSet.add(e.target); }});
+  visNodes   = DATA.nodes.filter(n => visNodeSet.has(n.id));
+
+  const cvN  = visNodes.filter(n => n.cluster === 'CV').length;
+  const mlN  = visNodes.filter(n => n.cluster === 'ML').length;
+  const mixN = visNodes.length - cvN - mlN;
+  document.getElementById('stats').innerHTML =
+    `${{visNodes.length.toLocaleString()}} researchers · ${{visEdges.length.toLocaleString()}} pairs<br>` +
+    `<span style="color:#1f77b4">CV: ${{cvN}}</span> &nbsp;` +
+    `<span style="color:#d62728">ML: ${{mlN}}</span> &nbsp;` +
+    `<span style="color:#9467bd">Mixed: ${{mixN}}</span>`;
+  requestDraw();
+}}
+
+// ── Draw (full Canvas, batched by color) ──────────────────────────────────────
+function requestDraw() {{
+  if (!rafId) rafId = requestAnimationFrame(() => {{ rafId = null; draw(); }});
+}}
+
+function draw() {{
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  ctx.translate(tx, ty);
+  ctx.scale(scale, scale);
+
+  // ── Edges: group by color → minimal strokeStyle changes ──────────────────
+  const edgeGroups = {{}};
+  for (const e of visEdges) {{
+    const c = edgeCol(e);
+    (edgeGroups[c] = edgeGroups[c] || []).push(e);
+  }}
+  ctx.globalAlpha = 0.32;
+  ctx.lineWidth   = 1 / scale;
+  for (const [col, edges] of Object.entries(edgeGroups)) {{
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    for (const e of edges) {{
+      const s = nodeById[e.source], t = nodeById[e.target];
+      ctx.moveTo(s.px, s.py);
+      ctx.lineTo(t.px, t.py);
+    }}
+    ctx.stroke();
+  }}
+
+  // ── Nodes: fill batched by color ─────────────────────────────────────────
+  const nodeGroups = {{}};
+  for (const n of visNodes) {{
+    const c = nodeColor(n);
+    (nodeGroups[c] = nodeGroups[c] || []).push(n);
+  }}
+  ctx.globalAlpha = 0.88;
+  for (const [col, nodes] of Object.entries(nodeGroups)) {{
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    for (const n of nodes) {{
+      const r = nodeR(n);
+      ctx.moveTo(n.px + r, n.py);
+      ctx.arc(n.px, n.py, r, 0, Math.PI * 2);
+    }}
+    ctx.fill();
+  }}
+
+  // ── Node outlines: single batched stroke ──────────────────────────────────
+  ctx.globalAlpha  = 0.5;
+  ctx.strokeStyle  = '#111';
+  ctx.lineWidth    = 1.5 / scale;
+  ctx.beginPath();
+  for (const n of visNodes) {{
+    const r = nodeR(n);
+    ctx.moveTo(n.px + r, n.py);
+    ctx.arc(n.px, n.py, r, 0, Math.PI * 2);
+  }}
+  ctx.stroke();
+
+  // ── Hovered / selected node ring + label ─────────────────────────────────
+  const highlight = hoveredNode || selectedNode;
+  if (highlight && visNodeSet.has(highlight.id)) {{
+    const r = nodeR(highlight);
+    ctx.globalAlpha  = 1;
+    ctx.strokeStyle  = '#fff';
+    ctx.lineWidth    = 2.5 / scale;
+    ctx.beginPath();
+    ctx.arc(highlight.px, highlight.py, r + 4/scale, 0, Math.PI * 2);
+    ctx.stroke();
+    // name label
+    const fs = Math.max(10, 12/scale);
+    ctx.font      = `600 ${{fs}}px -apple-system,sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 4/scale;
+    ctx.fillText(highlight.name, highlight.px, highlight.py - r - 5/scale);
+    ctx.shadowBlur = 0;
+  }}
+
+  // ── LOD labels: show at high zoom for prolific authors ────────────────────
+  if (scale > 0.22) {{
+    const minP  = Math.max(25, 70 / scale);
+    const alpha = Math.min(1, (scale - 0.22) * 5);
+    const fs    = Math.max(8, 10 / scale);
+    ctx.globalAlpha = alpha * 0.75;
+    ctx.fillStyle   = '#bbb';
+    ctx.font        = `${{fs}}px -apple-system,sans-serif`;
+    ctx.textAlign   = 'center';
+    for (const n of visNodes) {{
+      if (n.papers >= minP && n !== highlight) {{
+        ctx.fillText(n.name, n.px, n.py - nodeR(n) - 3/scale);
+      }}
+    }}
+  }}
+
+  ctx.restore();
+}}
+
+// ── Hit detection ─────────────────────────────────────────────────────────────
+function findNode(sx, sy) {{
+  const [gx, gy] = s2g(sx, sy);
+  const hit = 5 / scale;
+  let best = null, bestD2 = Infinity;
+  for (const n of visNodes) {{
+    const r = nodeR(n) + hit;
+    const dx = n.px - gx, dy = n.py - gy, d2 = dx*dx + dy*dy;
+    if (d2 < r*r && d2 < bestD2) {{ best = n; bestD2 = d2; }}
+  }}
+  return best;
+}}
+
+// ── Mouse events ──────────────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {{
+  const r = canvas.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const node = findNode(sx, sy);
+  if (node) {{
+    dragNode = node;
+    const [gx, gy] = s2g(sx, sy);
+    dragOffGX = node.px - gx;
+    dragOffGY = node.py - gy;
+  }} else {{
+    isPanning = true;
+    panSX = e.clientX - tx;
+    panSY = e.clientY - ty;
+    canvas.classList.add('panning');
+  }}
+  e.preventDefault();
+}});
+
+canvas.addEventListener('mousemove', e => {{
+  const r = canvas.getBoundingClientRect();
+  const sx = e.clientX - r.left, sy = e.clientY - r.top;
+
+  if (dragNode) {{
+    const [gx, gy] = s2g(sx, sy);
+    dragNode.px = gx + dragOffGX;
+    dragNode.py = gy + dragOffGY;
+    requestDraw();
+    return;
+  }}
+  if (isPanning) {{
+    tx = e.clientX - panSX;
+    ty = e.clientY - panSY;
+    requestDraw();
+    return;
+  }}
+  // Hover
+  const node = findNode(sx, sy);
+  if (node !== hoveredNode) {{
+    hoveredNode = node;
+    canvas.style.cursor = node ? 'pointer' : 'grab';
+    requestDraw();
+  }}
+}});
+
+canvas.addEventListener('mouseup', e => {{
+  if (!dragNode && !isPanning) {{   // it was a click
+    const r = canvas.getBoundingClientRect();
+    const node = findNode(e.clientX - r.left, e.clientY - r.top);
+    if (node) {{ selectedNode = node; showInfo(node); }}
+    else {{ selectedNode = null; document.getElementById('info').style.display='none'; }}
+    requestDraw();
+  }}
+  dragNode  = null;
+  isPanning = false;
+  canvas.classList.remove('panning');
+}});
+
+canvas.addEventListener('mouseleave', () => {{
+  hoveredNode = null;
+  dragNode    = null;
+  isPanning   = false;
+  canvas.classList.remove('panning');
+  requestDraw();
+}});
+
+canvas.addEventListener('wheel', e => {{
+  e.preventDefault();
+  const r   = canvas.getBoundingClientRect();
+  const sx  = e.clientX - r.left, sy = e.clientY - r.top;
+  const fac = e.deltaY < 0 ? 1.15 : 1/1.15;
+  const ns  = Math.max(0.01, Math.min(15, scale * fac));
+  tx = sx - (sx - tx) * ns / scale;
+  ty = sy - (sy - ty) * ns / scale;
+  scale = ns;
+  requestDraw();
+}}, {{ passive: false }});
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+document.getElementById('edge-slider').addEventListener('input', e => {{
+  edgeThreshold = +e.target.value;
+  document.getElementById('edge-val').textContent = edgeThreshold;
+  applyFilter();
+}});
+document.getElementById('size-by').addEventListener('change', e => {{
+  sizeMode = e.target.value;
+  requestDraw();
+}});
+function setColorMode(mode) {{
+  colorMode = mode;
+  document.querySelectorAll('#color-by button').forEach(b =>
+    b.classList.toggle('active', b.textContent.includes(mode==='cluster'?'Cluster':'Venue'))
+  );
+  requestDraw();
+}}
+
+// ── Info panel ────────────────────────────────────────────────────────────────
 function showInfo(d) {{
   document.getElementById('info').style.display = 'block';
   document.getElementById('info-name').textContent = d.name;
   const badge = document.getElementById('info-badge');
-  badge.textContent       = d.cluster;
-  badge.style.background  = CLUSTER_COLORS[d.cluster] + '33';
-  badge.style.color       = CLUSTER_COLORS[d.cluster];
-  badge.style.border      = `1px solid ${{CLUSTER_COLORS[d.cluster]}}55`;
-  document.getElementById('info-papers').textContent =  d.papers.toLocaleString();
-  document.getElementById('info-cv').textContent     =  d.cv_papers + (d.cv_ratio < 1 ? ` (${{Math.round(d.cv_ratio*100)}}%)` : '');
-  document.getElementById('info-ml').textContent     =  d.ml_papers;
-  document.getElementById('info-cites').textContent  =  d.total_citations.toLocaleString();
-  document.getElementById('info-venue').textContent  =  d.dominant_venue || '—';
-  document.getElementById('info-year').textContent   =  d.last_year || '—';
+  badge.textContent      = d.cluster;
+  badge.style.background = CLUSTER_COLORS[d.cluster] + '33';
+  badge.style.color      = CLUSTER_COLORS[d.cluster];
+  badge.style.border     = `1px solid ${{CLUSTER_COLORS[d.cluster]}}55`;
+  document.getElementById('info-papers').textContent = d.papers.toLocaleString();
+  document.getElementById('info-cv').textContent     = d.cv_papers + (d.cv_ratio < 1 ? ` (${{Math.round(d.cv_ratio*100)}}%)` : '');
+  document.getElementById('info-ml').textContent     = d.ml_papers;
+  document.getElementById('info-cites').textContent  = d.total_citations.toLocaleString();
+  document.getElementById('info-venue').textContent  = d.dominant_venue || '—';
+  document.getElementById('info-year').textContent   = d.last_year || '—';
 }}
 
-// ── Color mode toggle ────────────────────────────────────────────────────────
-function setColorMode(mode) {{
-  colorMode = mode;
-  document.querySelectorAll('#color-by button').forEach(b =>
-    b.classList.toggle('active', b.textContent.includes(mode === 'cluster' ? 'Cluster' : 'Venue'))
-  );
-  nodeSel.selectAll('circle').attr('fill', nodeColor);
-  linkSel.attr('stroke', edgeColor);
-}}
-
-// ── Events ───────────────────────────────────────────────────────────────────
-document.getElementById('edge-slider').addEventListener('input', e => {{
-  edgeThreshold = +e.target.value;
-  document.getElementById('edge-val').textContent = edgeThreshold;
-  applyFilter();   // instant — just display toggles
-}});
-
-document.getElementById('size-by').addEventListener('change', () => {{
-  nodeSel.selectAll('circle').attr('r', nodeRadius);
-}});
-
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 applyFilter();
 </script>
 </body>
