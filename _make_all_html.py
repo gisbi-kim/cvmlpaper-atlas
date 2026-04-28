@@ -757,17 +757,25 @@ function drawLineChart(filteredArr) {
   }
   const years = [];
   for (let y = YMIN; y <= YMAX; y++) years.push(y);
-  const datasets = VENUES.map(v => ({
-    label: v,
-    data: years.map(y => (counts[y] && counts[y][v]) || 0),
-    borderColor: VENUE_COLOR[v],
-    backgroundColor: VENUE_COLOR[v] + '22',
-    tension: 0.25,
-    pointRadius: 0,
-    pointHoverRadius: 4,
-    borderWidth: 1.8,
-    fill: false,
-  }));
+  const BIENNIAL = new Set(['ECCV', 'ICCV']);
+  const datasets = VENUES.map(v => {
+    const bi = BIENNIAL.has(v);
+    return {
+      label: v,
+      data: years.map(y => {
+        const c = (counts[y] && counts[y][v]) || 0;
+        return (bi && c === 0) ? null : c;
+      }),
+      spanGaps: bi,
+      borderColor: VENUE_COLOR[v],
+      backgroundColor: VENUE_COLOR[v] + '22',
+      tension: 0.25,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      borderWidth: 1.8,
+      fill: false,
+    };
+  });
   if (lineChart) lineChart.destroy();
   lineChart = new Chart(document.getElementById('chart-line'), {
     type: 'line',
