@@ -6,7 +6,6 @@ dblp_raw/
 enriched_checkpoint_*.json
 word_book.json
 word_book.csv
-coauthor_network.json
 
 # Logs & build artifacts
 *.log

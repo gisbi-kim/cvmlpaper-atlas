@@ -758,13 +758,14 @@ function drawLineChart(filteredArr) {
   const years = [];
   for (let y = YMIN; y <= YMAX; y++) years.push(y);
   const BIENNIAL = new Set(['ECCV', 'ICCV']);
+  const BIENNIAL_MIN = 20; // fewer papers → non-held year (workshop stragglers)
   const datasets = VENUES.map(v => {
     const bi = BIENNIAL.has(v);
     return {
       label: v,
       data: years.map(y => {
         const c = (counts[y] && counts[y][v]) || 0;
-        return (bi && c === 0) ? null : c;
+        return (bi && c < BIENNIAL_MIN) ? null : c;
       }),
       spanGaps: bi,
       borderColor: VENUE_COLOR[v],
