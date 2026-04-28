@@ -1204,6 +1204,68 @@ document.querySelectorAll('input[name="cmode"]').forEach(r => {
   r.addEventListener('change', (e) => { if (e.target.checked) applyColorMode(e.target.value); });
 });
 applyColorMode(colorMode);
+
+// ─── URL HASH DEEP-LINK ──────────────────────────────────────────────────────
+function pushHash() {
+  const p = new URLSearchParams();
+  if (selectedNode) p.set('node', selectedNode.label);
+  const q = searchInput.value.trim();
+  if (q) p.set('q', q);
+  const et = parseInt(slider.value);
+  if (et !== INITIAL_EDGE_THRESHOLD) p.set('et', et);
+  const sp = parseFloat(sparsitySlider.value);
+  if (sp !== INITIAL_SPARSITY) p.set('sp', sp);
+  if (colorMode !== 'community') p.set('cm', colorMode);
+  const qs = p.toString();
+  history.replaceState(null, '', qs ? '#' + qs : location.pathname + location.search);
+}
+
+(function restoreFromHash() {
+  const hash = location.hash.replace(/^#/, '');
+  if (!hash) return;
+  const p = new URLSearchParams(hash);
+  if (p.has('cm')) {
+    const cm = p.get('cm');
+    applyColorMode(cm);
+    const r = document.querySelector('input[name="cmode"][value="' + cm + '"]');
+    if (r) r.checked = true;
+  }
+  if (p.has('et')) {
+    const et = parseInt(p.get('et'));
+    slider.value = et;
+    sliderVal.textContent = et;
+    slider.dispatchEvent(new Event('input'));
+  }
+  if (p.has('sp')) {
+    const sp = parseFloat(p.get('sp'));
+    sparsitySlider.value = sp;
+    sparsityVal.textContent = sp;
+    applySparsity(sp);
+  }
+  if (p.has('q')) {
+    searchInput.value = p.get('q');
+    searchInput.dispatchEvent(new Event('input'));
+  }
+  if (p.has('node')) {
+    const label = p.get('node');
+    setTimeout(() => {
+      const n = nodes.find(nd => nd.label === label);
+      if (n) centerOnNode(n);
+    }, 600);
+  }
+})();
+
+// hook state-changing actions
+const _origCenterOnNode = centerOnNode;
+centerOnNode = function(n, scale) { _origCenterOnNode(n, scale); pushHash(); };
+
+canvas.addEventListener('click', pushHash, { capture: false });
+searchInput.addEventListener('input', pushHash);
+slider.addEventListener('input', pushHash);
+sparsitySlider.addEventListener('input', pushHash);
+document.querySelectorAll('input[name="cmode"]').forEach(r => {
+  r.addEventListener('change', pushHash);
+});
 })();
 </script>
 </body>
