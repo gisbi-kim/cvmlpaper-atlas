@@ -108,7 +108,7 @@ try:
         wb = json.load(f)
     wb_vocab = wb['vocab']
     wb_papers_slim = {doi: idx_list[:15] for doi, idx_list in wb['papers'].items()}
-    print(f"word_book: {len(wb_vocab):,} vocab")
+    print(f"word_book: {len(wb_vocab):,} vocab, {len(wb_papers_slim):,} papers")
 except FileNotFoundError:
     print("warning: word_book.json not found — run _make_word_book.py first")
     wb_vocab = []
@@ -129,13 +129,18 @@ VENUE_TEXT_CSS = ''.join(
 )
 SUMMARY_CARDS = ''.join(
     f'  <div class="card v-{v["id"]} venue-card" data-venue-id="{v["id"]}" '
-    f'title="Click to solo this venue">'
+    f'title="Click to solo this venue (click again to restore all)">'
     f'<div class="num" id="c-{v["id"]}">-</div>'
     f'<div class="label">{v["label"]} ({v["since"]}~)</div></div>\n'
     for v in VENUES_CFG
 )
-FILTER_CHECKBOXES = ''.join(
+FILTER_A_CHECKBOXES = ''.join(
     f'      <label><input type="checkbox" id="f-{v["id"]}" checked> '
+    f'{v["label"]} <span class="since">({v["since"]}~)</span></label>\n'
+    for v in VENUES_CFG
+)
+FILTER_B_CHECKBOXES = ''.join(
+    f'      <label><input type="checkbox" id="f-{v["id"]}-b" checked> '
     f'{v["label"]} <span class="since">({v["since"]}~)</span></label>\n'
     for v in VENUES_CFG
 )
@@ -148,452 +153,1285 @@ HTML = r"""<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js"></script>
 <style>
-* { box-sizing: border-box; }
-body { font-family: -apple-system,"Segoe UI",sans-serif; margin: 20px; background:#fafafa; color:#222; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-.sub { color:#666; font-size:13px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
-.stat-line { display:flex; gap:28px; font-size:13px; color:#555; margin:8px 0 14px; flex-wrap:wrap; }
-.stat-line b { color:#222; font-size:16px; margin-left:6px; font-weight:700; }
-.wrap { background:#fff; border:1px solid #e5e5e5; border-radius:8px; padding:14px 16px; margin-bottom:16px; }
-h2 { font-size:14px; margin:0 0 10px; color:#333; }
-canvas { max-height:340px; }
-.summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin-bottom:16px; }
-.card { min-width:0; background:#fff; border:1px solid #e5e5e5; border-radius:8px; padding:10px 14px; }
-.card .num { font-size:20px; font-weight:600; }
-.card .label { color:#666; font-size:11px; margin-top:2px; }
-.venue-card { cursor:pointer; transition:background 0.1s,transform 0.08s; }
-.venue-card:hover { background:#fafafa; transform:translateY(-1px); }
-.venue-card.solo { background:#f0f7ff; border-color:#1f77b4; }
-.card.dim { opacity:0.45; }
-.venue-filters { display:grid; grid-template-columns:repeat(auto-fill,minmax(135px,1fr)); gap:4px 14px; padding:8px 12px; margin-bottom:10px; background:#fafafa; border:1px solid #eee; border-radius:6px; }
-.venue-filters label { font-size:13px; color:#444; display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
-.venue-filters label .since { color:#999; font-size:11px; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 20px; background: #fafafa; color: #222; }
+  .brand { font-size: 12px; letter-spacing: 0.5px; color: #888; margin-bottom: 4px; }
+  .brand a { color: inherit; text-decoration: none; font-weight: 600; }
+  .brand a:hover { color: #1f77b4; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .stat-line { display: flex; gap: 28px; font-size: 13px; color: #555; margin: 8px 0 14px; flex-wrap: wrap; }
+  .stat-line b { color: #222; font-size: 16px; font-variant-numeric: tabular-nums; margin-left: 6px; font-weight: 700; }
+  .wrap { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  h2 { font-size: 14px; margin: 0 0 10px; color: #333; }
+  canvas { max-height: 340px; }
+
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { min-width: 0; background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 10px 14px; }
+  .card .num { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .card .label { color: #666; font-size: 11px; margin-top: 2px; }
+  .venue-card { cursor: pointer; transition: background 0.1s, transform 0.08s; }
+  .venue-card:hover { background: #fafafa; transform: translateY(-1px); }
+  .venue-card.solo { background: #f0f7ff; border-color: #1f77b4; }
+  .card.dim { opacity: 0.45; }
+
+  .venue-filters {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 4px 14px; padding: 8px 12px; margin-bottom: 10px;
+    background: #fafafa; border: 1px solid #eee; border-radius: 6px;
+  }
+  .venue-filters label { font-size: 13px; color: #444; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .venue-filters label .since { color: #999; font-size: 11px; }
 __CARD_BORDER_CSS__
-.controls { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
-.controls label { font-size:13px; color:#555; display:inline-flex; align-items:center; gap:6px; }
-.controls input[type="number"] { width:78px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:13px; }
-.controls input[type="text"] { padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px; min-width:200px; }
-.controls button { border:1px solid #ccc; background:#fff; padding:5px 12px; border-radius:4px; cursor:pointer; font-size:13px; }
-.controls button:hover { background:#f4f4f4; }
-.controls .reset { color:#c33; }
-.result-info { font-size:12px; color:#666; margin:8px 0 10px; }
-table { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
-th,td { border-bottom:1px solid #eee; padding:5px 8px; vertical-align:top; overflow:hidden; text-overflow:ellipsis; }
-th { background:#f4f4f4; font-weight:600; text-align:left; cursor:pointer; user-select:none; white-space:nowrap; }
-th:hover { background:#ebebeb; }
-th.sorted { background:#e0ebf5; }
-th .arrow { font-size:10px; color:#1f77b4; margin-left:4px; }
-col.col-rank  { width:52px; }
-col.col-venue { width:82px; }
-col.col-year  { width:52px; }
-col.col-pages { width:60px; }
-col.col-cites { width:72px; }
-col.col-title { width:auto; }
-col.col-authors { width:220px; }
-td.rank,td.cites,td.year,td.pages { text-align:right; font-variant-numeric:tabular-nums; }
-td.pages { color:#888; font-size:12px; }
-td.cites { font-weight:600; }
-td.rank { color:#999; }
+  .controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .controls label { font-size: 13px; color: #555; display: inline-flex; align-items: center; gap: 6px; }
+  .controls input[type="number"] { width: 78px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+  .controls input[type="text"] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; min-width: 90px; width: 110px; }
+  .controls button { border: 1px solid #ccc; background: #fff; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .controls button:hover { background: #f4f4f4; }
+  .controls .reset { color: #c33; }
+  .controls select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; background: #fff; }
+
+  .result-info { font-size: 12px; color: #666; margin: 8px 0 10px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+  th, td { border-bottom: 1px solid #eee; padding: 5px 8px; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+  th { background: #f4f4f4; font-weight: 600; text-align: left; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { background: #ebebeb; }
+  th.sorted { background: #e0ebf5; }
+  th .arrow { font-size: 10px; color: #1f77b4; margin-left: 4px; }
+
+  col.col-rank   { width: 52px; }
+  col.col-venue  { width: 88px; }
+  col.col-year   { width: 56px; }
+  col.col-pages  { width: 64px; }
+  col.col-title  { width: auto; }
+  col.col-authors { width: 230px; }
+  col.col-cites  { width: 72px; }
+
+  td.rank, td.cites, td.year, td.pages { text-align: right; font-variant-numeric: tabular-nums; }
+  td.pages { color: #888; font-size: 12px; }
+  td.cites { font-weight: 600; }
+  td.rank { color: #999; }
 __VENUE_TEXT_CSS__
-.venue-also { color:#888; font-weight:400; font-size:10px; }
-td.authors { color:#555; font-size:11px; white-space:nowrap; }
-.author-click { cursor:pointer; }
-.author-click:hover { color:#1f77b4; text-decoration:underline; }
-a { color:inherit; text-decoration:none; }
-a:hover { text-decoration:underline; color:#1f77b4; }
-a[data-doi] { border-bottom:1px dotted #bbb; }
-a[data-doi]:hover { border-bottom:1px solid #1f77b4; text-decoration:none; }
-#abstract-tooltip {
-  position:fixed; display:none; background:#fff;
-  border:1px solid #ccc; border-radius:6px;
-  padding:12px 14px; max-width:500px; min-width:280px;
-  box-shadow:0 6px 20px rgba(0,0,0,0.15);
-  font-size:12.5px; line-height:1.55; color:#333;
-  z-index:1000; pointer-events:none;
-}
-#abstract-tooltip .tt-title { font-weight:600; margin-bottom:6px; font-size:13px; }
-#abstract-tooltip .tt-meta  { color:#888; font-size:11px; margin-bottom:8px; }
-#abstract-tooltip .tt-body  { color:#444; }
-#wc-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center; }
-#wc-overlay.show { display:flex; }
-#wc-box { background:#fff; border-radius:10px; padding:20px; max-width:90vw; max-height:90vh; overflow:auto; }
-#wc-title { font-size:14px; font-weight:600; margin-bottom:10px; }
-#wc-canvas { display:block; }
-#wc-close { float:right; cursor:pointer; color:#999; font-size:18px; margin-top:-4px; }
+  .venue-also { color: #888; font-weight: 400; font-size: 10px; }
+  td.authors { color: #555; font-size: 11px; white-space: nowrap; }
+  .author-click { cursor: pointer; }
+  .author-click:hover { color: #1f77b4; text-decoration: underline; }
+  a { color: inherit; text-decoration: none; }
+  a:hover { text-decoration: underline; color: #1f77b4; }
+  a[data-doi] { border-bottom: 1px dotted #bbb; }
+  a[data-doi]:hover { border-bottom: 1px solid #1f77b4; text-decoration: none; }
+
+  #abstract-tooltip {
+    position: fixed; display: none; background: #fff;
+    border: 1px solid #ccc; border-radius: 6px;
+    padding: 12px 14px; max-width: 480px; min-width: 280px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    font-size: 12.5px; line-height: 1.55; color: #333;
+    z-index: 1000; pointer-events: none;
+  }
+  #abstract-tooltip .tt-head {
+    font-size: 11px; color: #888; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  #abstract-tooltip em { color: #999; font-style: italic; }
+
+  #wordcloud span {
+    cursor: pointer; transition: filter 0.12s;
+    padding: 1px 3px; border-radius: 3px;
+  }
+  #wordcloud span:hover { filter: brightness(0.7); background: rgba(31, 119, 180, 0.08); }
+
+  .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; font-size: 13px; flex-wrap: wrap; }
+  .pager button { border: 1px solid #ccc; background: #fff; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+  .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .toggle-btn { border: 1px solid #ccc; background: #fff; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .toggle-btn:hover { background: #f4f4f4; }
+  .toggle-btn.active { background: #1f77b4; color: #fff; border-color: #1f77b4; }
+  .zone-label { display: inline-block; font-size: 10px; color: #fff; background: #1f77b4; padding: 2px 7px; border-radius: 10px; vertical-align: middle; margin-left: 6px; font-weight: 700; letter-spacing: 0.3px; }
+  .zone-label.b { background: #d62728; }
+  .chart-label { font-size: 12px; color: #666; margin-bottom: 6px; text-align: center; }
+  #filter-b-wrap { background: #fff8f3; border-color: #ffd7bd; }
+
+  .vcol { display: flex; flex-direction: column; }
+  .vcol h3 { font-size: 13px; margin: 0 0 4px; color: #333; min-height: 32px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .vcol .desc { color: #888; font-size: 11px; margin-bottom: 6px; min-height: 30px; line-height: 1.45; }
+  .vcol .canv { position: relative; height: 220px; margin-top: auto; }
 </style>
 </head>
 <body>
-<div class="brand" style="font-size:12px;color:#888;margin-bottom:4px;">
-  <a href="https://github.com/gisbi-kim/cvml-paper-atlas" style="color:inherit;text-decoration:none;font-weight:600;">CV+ML Paper Atlas</a>
+
+<div class="brand">
+  <a href="https://github.com/gisbi-kim/cvml-paper-atlas">CV+ML Paper Atlas</a>
 </div>
 <h1>__TITLE__</h1>
 <div class="sub">
-  <span>40+ years of Computer Vision &amp; Machine Learning research — CVPR · ICCV · ECCV · NeurIPS · ICML · ICLR · AAAI · 3DV</span>
-  <span style="font-size:11px;color:#aaa;">Citations as of __AS_OF__</span>
-</div>
-<div class="stat-line">
-  <span>Total<b id="stat-total">-</b></span>
-  <span>Shown<b id="stat-shown">-</b></span>
-  <span>Year<b id="stat-yr">-</b></span>
-  <span>Citations<b id="stat-cites">-</b></span>
+  <span>DBLP + OpenAlex · __TOTAL_FMT__ papers (DOI-deduped) · __YEAR_MIN__ ~ __YEAR_MAX__ · CVPR · ICCV · ECCV · NeurIPS · ICML · ICLR · 3DV</span>
+  <span style="color:#888; text-align:right; line-height:1.4;">
+    Citations from OpenAlex · as of __AS_OF__
+  </span>
 </div>
 
+<!-- Aggregate stats row -->
+<div class="summary" style="margin-bottom: 8px;">
+  <div class="card"><div class="num" id="c-total">-</div><div class="label">Total shown</div></div>
+  <div class="card"><div class="num" id="c-maxcite">-</div><div class="label">Max citations</div></div>
+  <div class="card"><div class="num" id="c-meancite">-</div><div class="label">Mean citations</div></div>
+</div>
+<!-- Per-venue cards -->
 <div class="summary">
 __SUMMARY_CARDS__</div>
 
-<div class="wrap">
-  <h2>📈 Publications per year</h2>
-  <canvas id="chart-timeline"></canvas>
+<div style="margin-bottom: 12px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+  <button id="btn-compare" class="toggle-btn">+ Compare mode</button>
+  <label id="lock-y-axis-label" style="display:none; font-size: 13px; color: #555;">
+    <input type="checkbox" id="lock-y-axis"> Share y-axis between A and B
+  </label>
+  <span id="compare-hint" style="color:#888; font-size:12px;">Add a second filter zone to compare two trends side by side</span>
 </div>
 
+<!-- Filter A -->
 <div class="wrap">
-  <h2>🔍 Filter &amp; Search</h2>
-  <div class="venue-filters" id="venue-filters">
-__FILTER_CHECKBOXES__  </div>
+  <h2>Filters <span class="zone-label" id="zone-label-a" style="display:none;">A</span></h2>
+  <div class="venue-filters">
+__FILTER_A_CHECKBOXES__  </div>
   <div class="controls">
-    <label>Year from <input type="number" id="yr-from" value="__YEAR_MIN__" min="__YEAR_MIN__" max="__YEAR_MAX__"></label>
-    <label>to <input type="number" id="yr-to" value="__YEAR_MAX__" min="__YEAR_MIN__" max="__YEAR_MAX__"></label>
-    <label>Min citations <input type="number" id="min-cites" value="0" min="0"></label>
-    <label>Search <input type="text" id="search-box" placeholder="title / author…"></label>
-    <button onclick="applyFilters()">Apply</button>
-    <button class="reset" onclick="resetFilters()">Reset</button>
+    <label>Year
+      <input type="number" id="f-year-from" min="__YEAR_MIN__" max="__YEAR_MAX__" value="__YEAR_MIN__">
+      ~
+      <input type="number" id="f-year-to" min="__YEAR_MIN__" max="__YEAR_MAX__" value="__YEAR_MAX__">
+    </label>
+    <label>Min citations
+      <input type="number" id="f-mincite" min="0" value="0">
+    </label>
+    <label>Title:
+      <input type="text" id="f-title-1" placeholder="word 1">
+      <input type="text" id="f-title-2" placeholder="word 2">
+      <input type="text" id="f-title-3" placeholder="word 3">
+      <select id="f-title-op">
+        <option value="AND">AND</option>
+        <option value="OR">OR</option>
+      </select>
+    </label>
+    <label>Author:
+      <input type="text" id="f-author" placeholder="author name" style="min-width:130px;width:150px;">
+    </label>
+    <button id="btn-apply">Apply</button>
+    <button id="btn-reset" class="reset">Reset</button>
   </div>
   <div class="result-info" id="result-info"></div>
 </div>
 
+<!-- Filter B (compare mode) -->
+<div class="wrap" id="filter-b-wrap" style="display:none;">
+  <h2>Filters <span class="zone-label b">B</span></h2>
+  <div class="venue-filters">
+__FILTER_B_CHECKBOXES__  </div>
+  <div class="controls">
+    <label>Year
+      <input type="number" id="f-year-from-b" min="__YEAR_MIN__" max="__YEAR_MAX__" value="__YEAR_MIN__">
+      ~
+      <input type="number" id="f-year-to-b" min="__YEAR_MIN__" max="__YEAR_MAX__" value="__YEAR_MAX__">
+    </label>
+    <label>Min citations
+      <input type="number" id="f-mincite-b" min="0" value="0">
+    </label>
+    <label>Title:
+      <input type="text" id="f-title-1-b" placeholder="word 1">
+      <input type="text" id="f-title-2-b" placeholder="word 2">
+      <input type="text" id="f-title-3-b" placeholder="word 3">
+      <select id="f-title-op-b">
+        <option value="AND">AND</option>
+        <option value="OR">OR</option>
+      </select>
+    </label>
+    <label>Author:
+      <input type="text" id="f-author-b" placeholder="author name" style="min-width:130px;width:150px;">
+    </label>
+    <button id="btn-apply-b">Apply</button>
+    <button id="btn-reset-b" class="reset">Reset</button>
+  </div>
+  <div class="result-info" id="result-info-b"></div>
+</div>
+
+<!-- Charts: bar (stacked) + line -->
 <div class="wrap">
-  <h2>📄 Papers</h2>
+  <h2>Papers per year (stacked by venue, filtered)</h2>
+  <div id="bar-grid" style="display: flex; gap: 16px; align-items: flex-start;">
+    <div style="flex: 1; min-width: 0;">
+      <div class="chart-label" id="chart-label-a" style="display:none;"><span class="zone-label">A</span></div>
+      <div style="position: relative; height: 340px;"><canvas id="chart-bar"></canvas></div>
+    </div>
+    <div id="bar-b-col" style="flex: 1; min-width: 0; display: none;">
+      <div class="chart-label"><span class="zone-label b">B</span></div>
+      <div style="position: relative; height: 340px;"><canvas id="chart-bar-b"></canvas></div>
+    </div>
+    <div id="bar-overlay-col" style="flex: 1; min-width: 0; display: none;">
+      <div class="chart-label"><span class="zone-label">A</span> vs <span class="zone-label b">B</span> overlay</div>
+      <div style="position: relative; height: 340px;"><canvas id="chart-bar-overlay"></canvas></div>
+    </div>
+  </div>
+  <div style="margin-top: 18px;">
+    <div style="font-size:12px; color:#666; margin-bottom: 4px;">Per-venue lines (overlaid)</div>
+    <div style="position: relative; height: 320px;"><canvas id="chart-line"></canvas></div>
+  </div>
+</div>
+
+<!-- Venue comparison charts -->
+<div class="wrap">
+  <h2>Venue comparison
+    <span style="font-weight:normal; color:#888; font-size:12px;">
+      — impact metrics for the current filter
+    </span>
+  </h2>
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+    <div class="vcol">
+      <h3>1 · Total citations</h3>
+      <div class="desc">Σ cited_by_count. Volume — a single big hit can dominate.</div>
+      <div class="canv"><canvas id="chart-vtot"></canvas></div>
+    </div>
+    <div class="vcol">
+      <h3>2 · Avg citations / paper</h3>
+      <div class="desc">Σ / #. Normalises for venue size; still biased by mega-hits.</div>
+      <div class="canv"><canvas id="chart-vavg"></canvas></div>
+    </div>
+    <div class="vcol">
+      <h3>3 · Median citations</h3>
+      <div class="desc">Middle paper's cites. Outlier-resistant — the "typical paper".</div>
+      <div class="canv"><canvas id="chart-vmed"></canvas></div>
+    </div>
+    <div class="vcol">
+      <h3>4 · h-index</h3>
+      <div class="desc">Largest h with h papers each ≥ h cites. Consistent depth.</div>
+      <div class="canv"><canvas id="chart-vh"></canvas></div>
+    </div>
+    <div class="vcol">
+      <h3>
+        5 · Top-K composition
+        <select id="topk-select" style="padding:2px 6px; font-size: 12px; border:1px solid #ccc; border-radius: 4px; background: #fff;">
+          <option>10</option><option>50</option><option selected>100</option><option>500</option><option>1000</option>
+        </select>
+      </h3>
+      <div class="desc"># of top-K most-cited papers from each venue.</div>
+      <div class="canv"><canvas id="chart-vtopk"></canvas></div>
+    </div>
+    <div class="vcol">
+      <h3>6 · Avg authors / paper</h3>
+      <div class="desc">Team size culture.</div>
+      <div class="canv"><canvas id="chart-vauth"></canvas></div>
+    </div>
+    <div class="vcol">
+      <h3>7 · Avg # pages / paper</h3>
+      <div class="desc">Mean page length per venue. Thin black <b>±1σ pin</b> shows variance. Clipped to 2–30 pages.</div>
+      <div class="canv"><canvas id="chart-vpages"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- Word cloud -->
+<div class="wrap">
+  <h2>Word cloud
+    <span style="font-weight:normal; color:#888; font-size:12px;">
+      top terms across abstracts of the current filter — click a word to add it to the title filter
+    </span>
+  </h2>
+  <div id="wordcloud" style="width: 100%; height: 440px; position: relative; background: #fff; border-radius: 4px; overflow: hidden;"></div>
+  <div style="color:#888; font-size:11px; margin-top: 6px;" id="wc-note">Click a word to add it to the title filter.</div>
+</div>
+
+<!-- Citation stats -->
+<div class="wrap">
+  <h2>Citation stats
+    <span style="font-weight:normal; color:#888; font-size:12px;">
+      computed on the current filter result
+    </span>
+  </h2>
+  <div class="stat-line">
+    <span>h-index <b id="stat-h">-</b></span>
+    <span>i10-index <b id="stat-i10">-</b></span>
+    <span>mean <b id="stat-mean">-</b></span>
+    <span>median <b id="stat-median">-</b></span>
+    <span>std dev <b id="stat-std">-</b></span>
+  </div>
+  <canvas id="chart-hist" style="max-height: 220px;"></canvas>
+</div>
+
+<!-- Paper list -->
+<div class="wrap">
+  <h2>Paper list
+    <span style="font-weight:normal; color:#888; font-size:12px;">(click column header to sort · "also:…" = same paper cross-listed)</span>
+  </h2>
   <table id="papers-table">
     <colgroup>
       <col class="col-rank"><col class="col-venue"><col class="col-year">
-      <col class="col-cites"><col class="col-pages"><col class="col-title"><col class="col-authors">
+      <col class="col-pages"><col class="col-title"><col class="col-authors"><col class="col-cites">
     </colgroup>
     <thead>
       <tr>
-        <th data-col="rank">#<span class="arrow"></span></th>
-        <th data-col="venue">Venue<span class="arrow"></span></th>
-        <th data-col="year">Year<span class="arrow"></span></th>
-        <th data-col="cites">Cites<span class="arrow"></span></th>
-        <th data-col="pages">Pages<span class="arrow"></span></th>
-        <th data-col="title">Title<span class="arrow"></span></th>
-        <th data-col="authors">Authors<span class="arrow"></span></th>
+        <th>#</th>
+        <th data-sort="venue">Venue<span class="arrow"></span></th>
+        <th data-sort="year">Year<span class="arrow"></span></th>
+        <th data-sort="pages"># pages<span class="arrow"></span></th>
+        <th data-sort="title">Title<span class="arrow"></span></th>
+        <th data-sort="authors">Authors<span class="arrow"></span></th>
+        <th data-sort="cites">Cites<span class="arrow"></span></th>
       </tr>
     </thead>
-    <tbody id="papers-tbody"></tbody>
+    <tbody id="tbody"></tbody>
   </table>
-  <div id="load-more-wrap" style="text-align:center;margin:12px 0;">
-    <button id="load-more-btn" onclick="loadMore()" style="padding:6px 20px;">Load more…</button>
+  <div class="pager">
+    <span id="page-info"></span>
+    <label>per page
+      <select id="page-size">
+        <option>50</option><option>100</option><option>200</option><option selected>500</option>
+        <option>1000</option><option>2000</option><option>5000</option><option>10000</option>
+      </select>
+    </label>
+    <button id="page-first">« First</button>
+    <button id="page-prev">‹ Prev</button>
+    <button id="page-next">Next ›</button>
+    <button id="page-last">Last »</button>
   </div>
 </div>
 
-<div id="abstract-tooltip">
-  <div class="tt-title" id="tt-title"></div>
-  <div class="tt-meta"  id="tt-meta"></div>
-  <div class="tt-body"  id="tt-body"></div>
-</div>
-
-<div id="wc-overlay" onclick="closeWC()">
-  <div id="wc-box" onclick="event.stopPropagation()">
-    <span id="wc-close" onclick="closeWC()">✕</span>
-    <div id="wc-title"></div>
-    <canvas id="wc-canvas" width="600" height="360"></canvas>
-  </div>
-</div>
+<!-- Abstract tooltip (live fetch from OpenAlex) -->
+<div id="abstract-tooltip"></div>
 
 <script>
 // ─── DATA ───────────────────────────────────────────────────────────────────
-// [venue, year, title, authors, cited_by_count, doi, venues_all, pages_n]
-const RAW = __RAW_JSON__;
-
+// columns: [venue, year, title, authors, cites, doi, venues_all, pages_n]
+const ALL = __RAW_JSON__;
 const WB_VOCAB  = __WB_VOCAB__;
 const WB_PAPERS = __WB_PAPERS__;
+const KEYS = { venue: 0, year: 1, title: 2, authors: 3, cites: 4, doi: 5, pages: 7 };
+const YMIN = __YEAR_MIN__, YMAX = __YEAR_MAX__;
 
-const VENUES_CFG = __VENUES_CFG_JSON__;
+const VENUES_CFG  = __VENUES_CFG_JSON__;
 const VENUE_COLOR = Object.fromEntries(VENUES_CFG.map(v => [v.label, v.color]));
-const VENUE_ID    = Object.fromEntries(VENUES_CFG.map(v => [v.label, v.id]));
+const VENUE_IDS   = Object.fromEntries(VENUES_CFG.map(v => [v.label, v.id]));
+const VENUES      = VENUES_CFG.map(v => v.label);
 
-const AS_OF   = "__AS_OF__";
-const YEAR_MIN = __YEAR_MIN__;
-const YEAR_MAX = __YEAR_MAX__;
-const PAGE_SIZE = 200;
+function emptyVenueCounts() {
+  const m = {};
+  for (const v of VENUES) m[v] = 0;
+  return m;
+}
+function allVenuesTrue() {
+  const m = {};
+  for (const v of VENUES) m[v] = true;
+  return m;
+}
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
-let filtered = [];
-let displayed = 0;
-let sortCol = 'cites';
-let sortAsc = false;
-let soloVenue = null;
+const state = {
+  yearFrom: YMIN, yearTo: YMAX,
+  venueFilter: allVenuesTrue(),
+  minCite: 0,
+  titleTerms: ['', '', ''],
+  titleOp: 'AND',
+  author: '',
+  sortKey: 'cites', sortDesc: true,
+  page: 1, pageSize: 500,
+  filtered: [],
+  compareMode: false,
+  shareYAxis: false,
+  filterB: {
+    yearFrom: YMIN, yearTo: YMAX,
+    venueFilter: allVenuesTrue(),
+    minCite: 0,
+    titleTerms: ['', '', ''],
+    titleOp: 'AND',
+    author: '',
+  },
+  filteredB: [],
+};
 
-// ─── HELPERS ────────────────────────────────────────────────────────────────
-function venueClass(label) { return label.replace(/[^A-Za-z0-9]/g,'').toUpperCase(); }
-function fmtNum(n) { return n == null ? '-' : n.toLocaleString(); }
+let barChart, barChartB, overlayChart, lineChart, histChart;
+let vtotChart, vavgChart, vmedChart, vhChart, vtopkChart, vauthChart, vpagesChart;
 
-function venueHtml(venue, venuesAll) {
-  const cls = 'venue-' + venueClass(venue);
-  const also = venuesAll && venuesAll !== venue
-    ? `<span class="venue-also"> +${venuesAll.replace(venue,'').replace(',','').trim()}</span>` : '';
-  return `<span class="${cls}">${venue}</span>${also}`;
+// ─── UTILS ──────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+function hIndex(cites) {
+  const s = cites.slice().sort((a, b) => b - a);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] >= i + 1) h = i + 1; else break;
+  }
+  return h;
+}
+function i10Index(cites) { return cites.filter(c => c >= 10).length; }
+function median(sorted) {
+  const n = sorted.length;
+  if (n === 0) return 0;
+  return n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
+}
+function stdDev(vals, mean) {
+  if (vals.length < 2) return 0;
+  let s = 0;
+  for (const v of vals) s += (v - mean) ** 2;
+  return Math.sqrt(s / (vals.length - 1));
+}
+
+function buildHistBins(cites) {
+  if (!cites.length) return { labels: [], counts: [] };
+  const step = 10, cap = 200;
+  let max = 0;
+  for (const c of cites) if (c > max) max = c;
+  const nFine = max <= cap ? Math.ceil((max + 1) / step) : cap / step;
+  const hasOverflow = max > cap;
+  const labels = [];
+  for (let i = 0; i < nFine; i++) {
+    const lo = i * step, hi = lo + step - 1;
+    labels.push(`${lo}–${hi}`);
+  }
+  if (hasOverflow) labels.push(`${cap}+`);
+  const counts = new Array(labels.length).fill(0);
+  for (const c of cites) {
+    if (c >= cap) counts[counts.length - 1]++;
+    else counts[Math.min(nFine - 1, Math.floor(c / step))]++;
+  }
+  return { labels, counts };
 }
 
 // ─── FILTERING ──────────────────────────────────────────────────────────────
-function getActiveVenues() {
-  return VENUES_CFG.map(v => v.id).filter(id => {
-    const el = document.getElementById('f-' + id);
-    return el && el.checked;
-  }).map(id => VENUES_CFG.find(v => v.id === id).label);
-}
-
-function applyFilters() {
-  const yrFrom  = parseInt(document.getElementById('yr-from').value) || YEAR_MIN;
-  const yrTo    = parseInt(document.getElementById('yr-to').value)   || YEAR_MAX;
-  const minCite = parseInt(document.getElementById('min-cites').value) || 0;
-  const q       = (document.getElementById('search-box').value || '').toLowerCase().trim();
-  const active  = new Set(getActiveVenues());
-
-  filtered = RAW.filter(r => {
-    const [venue, year, title, authors, cites, doi, venuesAll, pages] = r;
-    if (!active.has(venue)) return false;
-    if (year < yrFrom || year > yrTo) return false;
-    if (cites < minCite) return false;
-    if (q && !title.toLowerCase().includes(q) && !authors.toLowerCase().includes(q)) return false;
-    return true;
-  });
-
-  // sort
-  const colIdx = {rank:null, venue:0, year:1, title:2, authors:3, cites:4, pages:7};
-  const ci = colIdx[sortCol];
-  if (ci !== null) {
-    filtered.sort((a,b) => {
-      const av = a[ci], bv = b[ci];
-      if (typeof av === 'number') return sortAsc ? av-bv : bv-av;
-      return sortAsc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-    });
-  }
-
-  displayed = 0;
-  document.getElementById('papers-tbody').innerHTML = '';
-  loadMore();
-  updateStats();
-  updateCards(active);
-  updateChart();
-}
-
-function resetFilters() {
-  document.getElementById('yr-from').value  = YEAR_MIN;
-  document.getElementById('yr-to').value    = YEAR_MAX;
-  document.getElementById('min-cites').value = 0;
-  document.getElementById('search-box').value = '';
-  VENUES_CFG.forEach(v => {
-    const el = document.getElementById('f-' + v.id);
-    if (el) el.checked = true;
-  });
-  soloVenue = null;
-  document.querySelectorAll('.venue-card').forEach(c => c.classList.remove('solo','dim'));
-  applyFilters();
-}
-
-// ─── TABLE RENDER ───────────────────────────────────────────────────────────
-function loadMore() {
-  const tbody = document.getElementById('papers-tbody');
-  const end   = Math.min(displayed + PAGE_SIZE, filtered.length);
-  const frag  = document.createDocumentFragment();
-  for (let i = displayed; i < end; i++) {
-    const [venue, year, title, authors, cites, doi, venuesAll, pages] = filtered[i];
-    const tr = document.createElement('tr');
-    const doiUrl = doi ? `https://doi.org/${doi}` : null;
-    const pg = pages > 0 ? pages + 'p' : '';
-    tr.innerHTML = `
-      <td class="rank">${(i+1).toLocaleString()}</td>
-      <td>${venueHtml(venue, venuesAll)}</td>
-      <td class="year">${year}</td>
-      <td class="cites">${fmtNum(cites)}</td>
-      <td class="pages">${pg}</td>
-      <td>${doiUrl
-        ? `<a data-doi="${doi}" href="${doiUrl}" target="_blank" rel="noopener">${title}</a>`
-        : title}</td>
-      <td class="authors">${authors.split(';').map(a =>
-        `<span class="author-click" onclick="searchAuthor(this)">${a.trim()}</span>`
-      ).join('; ')}</td>`;
-    if (doi && WB_PAPERS[doi]) {
-      tr.querySelector('a,td:nth-child(6)').addEventListener('mouseenter', e => showAbstract(e, i));
-      tr.querySelector('a,td:nth-child(6)').addEventListener('mouseleave', hideAbstract);
+function computeFiltered(f) {
+  const terms = f.titleTerms.map(t => t.trim().toLowerCase()).filter(t => t);
+  const author = f.author.trim().toLowerCase();
+  const useOr = f.titleOp === 'OR';
+  const out = [];
+  for (let i = 0; i < ALL.length; i++) {
+    const r = ALL[i];
+    if (r[1] < f.yearFrom || r[1] > f.yearTo) continue;
+    if (!f.venueFilter[r[0]]) continue;
+    if (r[4] < f.minCite) continue;
+    if (terms.length > 0) {
+      const t = r[2].toLowerCase();
+      if (useOr) {
+        let hit = false;
+        for (const term of terms) { if (t.includes(term)) { hit = true; break; } }
+        if (!hit) continue;
+      } else {
+        let all = true;
+        for (const term of terms) { if (!t.includes(term)) { all = false; break; } }
+        if (!all) continue;
+      }
     }
-    frag.appendChild(tr);
+    if (author && !r[3].toLowerCase().includes(author)) continue;
+    out.push(r);
   }
-  tbody.appendChild(frag);
-  displayed = end;
-  document.getElementById('load-more-wrap').style.display =
-    displayed < filtered.length ? 'block' : 'none';
+  return out;
 }
 
-// ─── ABSTRACT TOOLTIP ───────────────────────────────────────────────────────
-let _tt = null;
-function showAbstract(e, idx) {
-  const [venue,year,title,authors,cites,doi] = filtered[idx];
-  document.getElementById('tt-title').textContent = title;
-  document.getElementById('tt-meta').textContent  = `${venue} ${year} · ${cites} citations`;
-  // reconstruct a short preview from word_book
-  const wordIdxs = WB_PAPERS[doi] || [];
-  const preview  = wordIdxs.slice(0,20).map(([wi]) => WB_VOCAB[wi]).join(' ');
-  document.getElementById('tt-body').textContent = preview ? `[keywords: ${preview}]` : '(no abstract)';
-  const tt = document.getElementById('abstract-tooltip');
-  tt.style.display = 'block';
-  positionTT(e, tt);
-  _tt = tt;
-}
-function hideAbstract() { if (_tt) _tt.style.display = 'none'; }
-function positionTT(e, tt) {
-  const margin = 14;
-  let x = e.clientX + margin, y = e.clientY + margin;
-  if (x + 500 > window.innerWidth) x = e.clientX - 500 - margin;
-  if (y + 200 > window.innerHeight) y = e.clientY - 200 - margin;
-  tt.style.left = x + 'px'; tt.style.top = y + 'px';
-}
-
-// ─── WORD CLOUD ─────────────────────────────────────────────────────────────
-function showWC(doi, title) {
-  const words = (WB_PAPERS[doi] || []).map(([wi, freq]) => [WB_VOCAB[wi], freq * 10]);
-  if (!words.length) return;
-  document.getElementById('wc-title').textContent = title;
-  document.getElementById('wc-overlay').classList.add('show');
-  WordCloud(document.getElementById('wc-canvas'), {
-    list: words, gridSize: 8, weightFactor: 4,
-    fontFamily: '-apple-system,sans-serif', color: 'random-dark',
-    rotateRatio: 0.3, backgroundColor: '#fff',
+function filterAndSort() {
+  const out = computeFiltered(state);
+  const k = KEYS[state.sortKey];
+  const dir = state.sortDesc ? -1 : 1;
+  out.sort((a, b) => {
+    const va = a[k], vb = b[k];
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
   });
+  state.filtered = out;
+  state.page = 1;
+  if (state.compareMode) {
+    state.filteredB = computeFiltered(state.filterB);
+  }
 }
-function closeWC() { document.getElementById('wc-overlay').classList.remove('show'); }
 
-// ─── STATS ──────────────────────────────────────────────────────────────────
-function updateStats() {
-  const total = RAW.length;
-  const shown = filtered.length;
-  const years = filtered.map(r => r[1]);
-  const yr = years.length ? `${Math.min(...years)}–${Math.max(...years)}` : '-';
-  const cites = filtered.reduce((s, r) => s + (r[4]||0), 0);
-  document.getElementById('stat-total').textContent = fmtNum(total);
-  document.getElementById('stat-shown').textContent = fmtNum(shown);
-  document.getElementById('stat-yr').textContent    = yr;
-  document.getElementById('stat-cites').textContent = fmtNum(cites);
+// ─── STATS CARDS ────────────────────────────────────────────────────────────
+function renderStats() {
+  const f = state.filtered;
+  document.getElementById('c-total').textContent = f.length.toLocaleString();
+  const counts = emptyVenueCounts();
+  let maxC = 0, sumC = 0;
+  for (const r of f) {
+    if (counts[r[0]] !== undefined) counts[r[0]]++;
+    if (r[4] > maxC) maxC = r[4];
+    sumC += r[4];
+  }
+  for (const v of VENUES) {
+    const el = document.getElementById('c-' + VENUE_IDS[v]);
+    if (el) el.textContent = counts[v].toLocaleString();
+  }
+  if (f.length === 0) {
+    document.getElementById('c-maxcite').textContent = '-';
+    document.getElementById('c-meancite').textContent = '-';
+  } else {
+    document.getElementById('c-maxcite').textContent = maxC.toLocaleString();
+    document.getElementById('c-meancite').textContent = (sumC / f.length).toFixed(1);
+  }
   document.getElementById('result-info').textContent =
-    `Showing ${fmtNum(shown)} of ${fmtNum(total)} papers`;
+    `Showing ${f.length.toLocaleString()} / ${ALL.length.toLocaleString()} papers`;
 }
 
-function updateCards(active) {
+// ─── CHARTS ─────────────────────────────────────────────────────────────────
+function yearTotalMax(filteredArr) {
+  const totals = {};
+  for (const r of filteredArr) totals[r[1]] = (totals[r[1]] || 0) + 1;
+  let m = 0;
+  for (const k in totals) if (totals[k] > m) m = totals[k];
+  return m;
+}
+
+function drawBarChart(canvasId, filteredArr, which, yMax) {
   const counts = {};
-  VENUES_CFG.forEach(v => counts[v.label] = 0);
-  filtered.forEach(r => { if (counts[r[0]] !== undefined) counts[r[0]]++; });
-  VENUES_CFG.forEach(v => {
-    const el = document.getElementById('c-' + v.id);
-    if (el) el.textContent = fmtNum(counts[v.label]);
-    const card = document.querySelector(`.card.v-${v.id}`);
-    if (card) card.classList.toggle('dim', !active.has(v.label));
-  });
-}
-
-// ─── CHART ──────────────────────────────────────────────────────────────────
-let chart = null;
-function updateChart() {
-  const years = Array.from(new Set(filtered.map(r => r[1]))).sort((a,b)=>a-b);
-  const datasets = VENUES_CFG.map(v => {
-    const data = years.map(y => filtered.filter(r => r[0]===v.label && r[1]===y).length);
-    return { label: v.label, data, backgroundColor: v.color + 'cc', stack: 'a' };
-  });
-  if (chart) chart.destroy();
-  chart = new Chart(document.getElementById('chart-timeline'), {
+  for (const r of filteredArr) {
+    if (!counts[r[1]]) counts[r[1]] = emptyVenueCounts();
+    if (counts[r[1]][r[0]] !== undefined) counts[r[1]][r[0]]++;
+  }
+  const years = [];
+  for (let y = YMIN; y <= YMAX; y++) years.push(y);
+  const datasets = VENUES.map(v => ({
+    label: v,
+    data: years.map(y => (counts[y] && counts[y][v]) || 0),
+    backgroundColor: VENUE_COLOR[v],
+    stack: 'a',
+  }));
+  const yOpts = { stacked: true, beginAtZero: true, title: { display: true, text: 'Papers' } };
+  if (yMax) yOpts.max = yMax;
+  const config = {
     type: 'bar',
     data: { labels: years, datasets },
     options: {
-      responsive: true, animation: false,
-      plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
-      scales: {
-        x: { stacked: true, ticks: { maxRotation: 0, font: { size: 10 } } },
-        y: { stacked: true, ticks: { font: { size: 10 } } },
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { mode: 'index', intersect: false },
       },
-    }
+      scales: {
+        x: { stacked: true, title: { display: true, text: 'Year' } },
+        y: yOpts,
+      },
+    },
+  };
+  if (which === 'A') {
+    if (barChart) barChart.destroy();
+    barChart = new Chart(document.getElementById(canvasId), config);
+  } else {
+    if (barChartB) barChartB.destroy();
+    barChartB = new Chart(document.getElementById(canvasId), config);
+  }
+}
+
+function drawOverlayChart(yMax) {
+  const totalsA = {}, totalsB = {};
+  for (const r of state.filtered)  totalsA[r[1]] = (totalsA[r[1]] || 0) + 1;
+  for (const r of state.filteredB) totalsB[r[1]] = (totalsB[r[1]] || 0) + 1;
+  const years = [];
+  for (let y = YMIN; y <= YMAX; y++) years.push(y);
+  const dataA = years.map(y => totalsA[y] || 0);
+  const dataB = years.map(y => totalsB[y] || 0);
+  const yOpts = { beginAtZero: true, title: { display: true, text: 'Papers' } };
+  if (yMax) yOpts.max = yMax;
+  if (overlayChart) overlayChart.destroy();
+  overlayChart = new Chart(document.getElementById('chart-bar-overlay'), {
+    type: 'line',
+    data: {
+      labels: years,
+      datasets: [
+        { label: 'A', data: dataA, borderColor: '#1f77b4', backgroundColor: 'rgba(31,119,180,0.35)', fill: 'origin', tension: 0.25, pointRadius: 0, borderWidth: 1.8 },
+        { label: 'B', data: dataB, borderColor: '#d62728', backgroundColor: 'rgba(214,39,40,0.35)', fill: 'origin', tension: 0.25, pointRadius: 0, borderWidth: 1.8 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { tooltip: { mode: 'index', intersect: false }, legend: { position: 'top' } },
+      scales: { x: { title: { display: true, text: 'Year' } }, y: yOpts },
+    },
   });
 }
 
-// ─── SORT ───────────────────────────────────────────────────────────────────
-document.querySelectorAll('th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    if (sortCol === col) sortAsc = !sortAsc;
-    else { sortCol = col; sortAsc = col === 'title' || col === 'authors' || col === 'venue'; }
-    document.querySelectorAll('th').forEach(t => {
-      t.classList.remove('sorted');
-      t.querySelector('.arrow').textContent = '';
-    });
-    th.classList.add('sorted');
-    th.querySelector('.arrow').textContent = sortAsc ? ' ▲' : ' ▼';
-    applyFilters();
+function drawLineChart(filteredArr) {
+  const counts = {};
+  for (const r of filteredArr) {
+    if (!counts[r[1]]) counts[r[1]] = {};
+    counts[r[1]][r[0]] = (counts[r[1]][r[0]] || 0) + 1;
+  }
+  const years = [];
+  for (let y = YMIN; y <= YMAX; y++) years.push(y);
+  const datasets = VENUES.map(v => ({
+    label: v,
+    data: years.map(y => (counts[y] && counts[y][v]) || 0),
+    borderColor: VENUE_COLOR[v],
+    backgroundColor: VENUE_COLOR[v] + '22',
+    tension: 0.25,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    borderWidth: 1.8,
+    fill: false,
+  }));
+  if (lineChart) lineChart.destroy();
+  lineChart = new Chart(document.getElementById('chart-line'), {
+    type: 'line',
+    data: { labels: years, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { tooltip: { mode: 'index', intersect: false }, legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Year' } },
+        y: { title: { display: true, text: 'Papers' }, beginAtZero: true },
+      },
+    },
   });
-});
+}
 
-// ─── VENUE SOLO ─────────────────────────────────────────────────────────────
-document.querySelectorAll('.venue-card').forEach(card => {
-  card.addEventListener('click', () => {
-    const vid = card.dataset.venueId;
-    if (soloVenue === vid) {
-      soloVenue = null;
-      VENUES_CFG.forEach(v => {
-        const el = document.getElementById('f-' + v.id);
-        if (el) el.checked = true;
-      });
-      document.querySelectorAll('.venue-card').forEach(c => c.classList.remove('solo','dim'));
+function renderBarChart() {
+  let yMax = null;
+  if (state.compareMode && state.shareYAxis) {
+    yMax = Math.max(yearTotalMax(state.filtered), yearTotalMax(state.filteredB));
+  }
+  drawBarChart('chart-bar', state.filtered, 'A', yMax);
+  drawLineChart(state.filtered);
+  if (state.compareMode) {
+    drawBarChart('chart-bar-b', state.filteredB, 'B', yMax);
+    drawOverlayChart(yMax);
+  } else {
+    if (barChartB) { barChartB.destroy(); barChartB = null; }
+    if (overlayChart) { overlayChart.destroy(); overlayChart = null; }
+  }
+}
+
+// ─── VENUE COMPARISON ───────────────────────────────────────────────────────
+function venueStats(filtered, topK) {
+  const sum = {}, count = {}, cites = {}, authorsTot = {}, pagesArr = {};
+  for (const v of VENUES) {
+    sum[v] = 0; count[v] = 0; cites[v] = []; authorsTot[v] = 0; pagesArr[v] = [];
+  }
+  for (const r of filtered) {
+    const v = r[0], c = r[4];
+    if (sum[v] === undefined) continue;
+    sum[v] += c; count[v]++; cites[v].push(c);
+    const nAuth = (r[3] || '').split(';').filter(s => s.trim()).length;
+    authorsTot[v] += nAuth;
+    const pn = r[7] || 0;
+    if (pn > 0) pagesArr[v].push(pn);
+  }
+  const avg = {}, avgAuth = {}, med = {}, hidx = {}, pagesAvg = {}, pagesSd = {};
+  for (const v of VENUES) {
+    const n = count[v];
+    avg[v]     = n ? sum[v] / n : 0;
+    avgAuth[v] = n ? authorsTot[v] / n : 0;
+    const pa = pagesArr[v];
+    if (pa.length) {
+      const m = pa.reduce((a, b) => a + b, 0) / pa.length;
+      const variance = pa.reduce((a, b) => a + (b - m) * (b - m), 0) / pa.length;
+      pagesAvg[v] = m;
+      pagesSd[v]  = Math.sqrt(variance);
     } else {
-      soloVenue = vid;
-      VENUES_CFG.forEach(v => {
-        const el = document.getElementById('f-' + v.id);
-        if (el) el.checked = v.id === vid;
-      });
-      document.querySelectorAll('.venue-card').forEach(c => {
-        c.classList.toggle('solo', c.dataset.venueId === vid);
-        c.classList.toggle('dim',  c.dataset.venueId !== vid);
-      });
+      pagesAvg[v] = 0; pagesSd[v] = 0;
     }
-    applyFilters();
-  });
-});
+    const asc = cites[v].slice().sort((a, b) => a - b);
+    if (!asc.length) { med[v] = 0; }
+    else if (asc.length % 2) { med[v] = asc[(asc.length - 1) >> 1]; }
+    else { med[v] = (asc[asc.length / 2 - 1] + asc[asc.length / 2]) / 2; }
+    const desc = cites[v].slice().sort((a, b) => b - a);
+    let h = 0;
+    for (let i = 0; i < desc.length; i++) {
+      if (desc[i] >= i + 1) h = i + 1; else break;
+    }
+    hidx[v] = h;
+  }
+  const sorted = filtered.slice().sort((a, b) => b[4] - a[4]).slice(0, topK);
+  const topN = {};
+  for (const v of VENUES) topN[v] = 0;
+  for (const r of sorted) if (topN[r[0]] !== undefined) topN[r[0]]++;
+  return { sum, avg, med, hidx, topN, topK: sorted.length, avgAuth, pagesAvg, pagesSd };
+}
 
-// ─── AUTHOR SEARCH ──────────────────────────────────────────────────────────
-function searchAuthor(el) {
-  document.getElementById('search-box').value = el.textContent.trim();
+function _venueBar(data, xTitle, formatValue) {
+  const labels = VENUES.slice().sort((a, b) => (data[b] || 0) - (data[a] || 0));
+  const vals   = labels.map(v => data[v] || 0);
+  const colors = labels.map(v => VENUE_COLOR[v]);
+  const fmt = formatValue || ((v) => Number(v).toLocaleString());
+  return {
+    type: 'bar',
+    data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderColor: colors, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ' ' + fmt(ctx.raw) } } },
+      scales: {
+        x: { title: { display: true, text: xTitle }, beginAtZero: true, ticks: { callback: (v) => fmt(v) } },
+        y: { ticks: { autoSkip: false } },
+      },
+    },
+  };
+}
+
+function _venueBarWithPin(meanData, sdData, xTitle, formatValue) {
+  const labels = VENUES.slice().sort((a, b) => (meanData[b] || 0) - (meanData[a] || 0));
+  const means  = labels.map(v => meanData[v] || 0);
+  const sds    = labels.map(v => sdData[v]   || 0);
+  const ranges = labels.map((_, i) => [Math.max(0, means[i] - sds[i]), means[i] + sds[i]]);
+  const colors = labels.map(v => VENUE_COLOR[v]);
+  const fmt = formatValue || ((v) => Number(v).toFixed(1));
+  return {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { data: means, backgroundColor: colors, borderColor: colors, borderWidth: 0, barPercentage: 0.7, categoryPercentage: 0.9 },
+        { data: ranges, backgroundColor: 'rgba(40,40,40,0.85)', borderColor: 'rgba(40,40,40,0.85)', borderWidth: 0, barPercentage: 0.10, categoryPercentage: 0.9, grouped: false },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ctx.datasetIndex === 0 ? ' mean: ' + fmt(ctx.raw) : ' ±1σ: ' + fmt(ctx.raw[0]) + ' – ' + fmt(ctx.raw[1]) } },
+      },
+      scales: {
+        x: { title: { display: true, text: xTitle }, beginAtZero: true, ticks: { callback: (v) => fmt(v) } },
+        y: { ticks: { autoSkip: false } },
+      },
+    },
+  };
+}
+
+function renderVenueComparison() {
+  const topK = parseInt(document.getElementById('topk-select').value) || 100;
+  const s = venueStats(state.filtered, topK);
+  const f1 = (v) => Number(v).toFixed(1);
+  if (vtotChart)   vtotChart.destroy();
+  vtotChart   = new Chart(document.getElementById('chart-vtot'),   _venueBar(s.sum,      'Σ citations'));
+  if (vavgChart)   vavgChart.destroy();
+  vavgChart   = new Chart(document.getElementById('chart-vavg'),   _venueBar(s.avg,      'cites / paper',  f1));
+  if (vmedChart)   vmedChart.destroy();
+  vmedChart   = new Chart(document.getElementById('chart-vmed'),   _venueBar(s.med,      'median cites',   f1));
+  if (vhChart)     vhChart.destroy();
+  vhChart     = new Chart(document.getElementById('chart-vh'),     _venueBar(s.hidx,     'h-index'));
+  if (vtopkChart)  vtopkChart.destroy();
+  vtopkChart  = new Chart(document.getElementById('chart-vtopk'),  _venueBar(s.topN,     `# in top ${s.topK}`));
+  if (vauthChart)  vauthChart.destroy();
+  vauthChart  = new Chart(document.getElementById('chart-vauth'),  _venueBar(s.avgAuth,  'authors / paper', f1));
+  if (vpagesChart) vpagesChart.destroy();
+  vpagesChart = new Chart(document.getElementById('chart-vpages'), _venueBarWithPin(s.pagesAvg, s.pagesSd, 'pages / paper', f1));
+}
+
+// ─── CITATION STATS ─────────────────────────────────────────────────────────
+function renderCitationStats() {
+  const cites = state.filtered.map(r => r[4]);
+  const setText = (id, v) => { document.getElementById(id).textContent = v; };
+  if (cites.length === 0) {
+    setText('stat-h', '-'); setText('stat-i10', '-');
+    setText('stat-mean', '-'); setText('stat-median', '-'); setText('stat-std', '-');
+    if (histChart) { histChart.destroy(); histChart = null; }
+    return;
+  }
+  const sorted = cites.slice().sort((a, b) => a - b);
+  const mean = cites.reduce((a, b) => a + b, 0) / cites.length;
+  setText('stat-h',      hIndex(cites).toLocaleString());
+  setText('stat-i10',    i10Index(cites).toLocaleString());
+  setText('stat-mean',   mean.toFixed(1));
+  setText('stat-median', median(sorted).toLocaleString());
+  setText('stat-std',    stdDev(cites, mean).toFixed(1));
+  const { labels, counts } = buildHistBins(cites);
+  if (histChart) histChart.destroy();
+  histChart = new Chart(document.getElementById('chart-hist'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Papers', data: counts, backgroundColor: '#1f77b4cc' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'Citation count range (bin size 10, 200+ overflow)' }, ticks: { autoSkip: true, maxRotation: 0 } },
+        y: { beginAtZero: true, title: { display: true, text: 'Papers' } },
+      },
+    },
+  });
+}
+
+// ─── WORD CLOUD ─────────────────────────────────────────────────────────────
+function addTitleFilterWord(word) {
+  const ids = ['f-title-1', 'f-title-2', 'f-title-3'];
+  let placed = false;
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el.value.trim()) { el.value = word; placed = true; break; }
+  }
+  if (!placed) document.getElementById('f-title-1').value = word;
   applyFilters();
 }
 
+function renderWordCloud() {
+  const container = document.getElementById('wordcloud');
+  const note = document.getElementById('wc-note');
+  container.innerHTML = '';
+  if (!WB_VOCAB || WB_VOCAB.length === 0) {
+    note.textContent = 'Word book not loaded. Run _make_word_book.py and regenerate this page.';
+    return;
+  }
+  const counts = new Array(WB_VOCAB.length).fill(0);
+  let covered = 0;
+  for (const r of state.filtered) {
+    const doi = r[5];
+    const words = WB_PAPERS[doi];
+    if (words) {
+      covered++;
+      for (const [wi] of words) counts[wi]++;
+    }
+  }
+  const pairs = [];
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] > 0) pairs.push([WB_VOCAB[i], counts[i]]);
+  }
+  pairs.sort((a, b) => b[1] - a[1]);
+  const top = pairs.slice(0, 50);
+  if (covered === 0 || top.length === 0) {
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#aaa;font-size:13px;">No abstracts available for this filter</div>';
+    note.textContent = `${state.filtered.length.toLocaleString()} papers · 0 with indexed abstracts`;
+    return;
+  }
+  const maxW = top[0][1];
+  if (typeof WordCloud !== 'undefined') {
+    WordCloud(container, {
+      list: top,
+      gridSize: 14,
+      weightFactor: (size) => Math.max(16, (size / maxW) * 72),
+      fontFamily: '-apple-system, "Segoe UI", sans-serif',
+      color: (word, weight) => {
+        const t = weight / maxW;
+        if (t > 0.65) return '#1a4e80';
+        if (t > 0.35) return '#1f77b4';
+        if (t > 0.15) return '#2ca02c';
+        return '#6b6b6b';
+      },
+      rotateRatio: 0.22,
+      rotationSteps: 2,
+      backgroundColor: '#fff',
+      drawOutOfBound: false,
+      shrinkToFit: true,
+      click: (item) => addTitleFilterWord(item[0]),
+    });
+  }
+  note.textContent = `${state.filtered.length.toLocaleString()} papers · ${covered.toLocaleString()} with abstracts · top ${top.length} of ${pairs.length.toLocaleString()} unique terms · click a word to add to title filter`;
+}
+
+// ─── TABLE ──────────────────────────────────────────────────────────────────
+function venueHtml(r) {
+  const primary = r[0];
+  const all = (r[6] || '').split(',').filter(x => x && x !== primary);
+  const cls = 'venue-' + String(primary).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  let s = `<span class="${cls}">${escapeHtml(primary)}</span>`;
+  if (all.length) s += ` <span class="venue-also">+${escapeHtml(all.join(','))}</span>`;
+  return s;
+}
+
+function renderTable() {
+  const f = state.filtered;
+  const total = f.length;
+  const pages = Math.max(1, Math.ceil(total / state.pageSize));
+  if (state.page > pages) state.page = pages;
+  const start = (state.page - 1) * state.pageSize;
+  const end = Math.min(start + state.pageSize, total);
+  const rows = [];
+  for (let i = start; i < end; i++) {
+    const r = f[i];
+    const title = r[5]
+      ? `<a href="https://doi.org/${r[5]}" data-doi="${escapeAttr(r[5])}" target="_blank" rel="noopener">${escapeHtml(r[2])}</a>`
+      : escapeHtml(r[2]);
+    const authorsHtml = r[3]
+      ? r[3].split(';').map(a => {
+          const name = a.trim();
+          if (!name) return '';
+          return `<span class="author-click" data-author="${escapeAttr(name)}">${escapeHtml(name)}</span>`;
+        }).filter(Boolean).join('; ')
+      : '';
+    rows.push(
+      `<tr>`
+      + `<td class="rank">${i + 1}</td>`
+      + `<td>${venueHtml(r)}</td>`
+      + `<td class="year">${r[1]}</td>`
+      + `<td class="pages">${r[7] ? r[7] : 'N/A'}</td>`
+      + `<td>${title}</td>`
+      + `<td class="authors" title="${escapeAttr(r[3])}">${authorsHtml}</td>`
+      + `<td class="cites">${r[4].toLocaleString()}</td>`
+      + `</tr>`
+    );
+  }
+  document.getElementById('tbody').innerHTML = rows.join('');
+  document.getElementById('page-info').textContent = total === 0
+    ? '0 / 0'
+    : `${(start + 1).toLocaleString()} ~ ${end.toLocaleString()} / ${total.toLocaleString()} (p.${state.page}/${pages})`;
+  document.getElementById('page-prev').disabled  = state.page <= 1;
+  document.getElementById('page-first').disabled = state.page <= 1;
+  document.getElementById('page-next').disabled  = state.page >= pages;
+  document.getElementById('page-last').disabled  = state.page >= pages;
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    const arrow = th.querySelector('.arrow');
+    if (th.dataset.sort === state.sortKey) {
+      th.classList.add('sorted');
+      arrow.textContent = state.sortDesc ? '▼' : '▲';
+    } else {
+      th.classList.remove('sorted');
+      arrow.textContent = '';
+    }
+  });
+}
+
+// ─── RENDER ALL ─────────────────────────────────────────────────────────────
+let wcDebounceTimer = null;
+function rerenderAll() {
+  filterAndSort();
+  renderStats();
+  renderBarChart();
+  renderVenueComparison();
+  renderCitationStats();
+  renderTable();
+  clearTimeout(wcDebounceTimer);
+  wcDebounceTimer = setTimeout(renderWordCloud, 180);
+}
+
+// ─── APPLY / RESET ──────────────────────────────────────────────────────────
+function applyFilters() {
+  const yf = parseInt(document.getElementById('f-year-from').value) || YMIN;
+  const yt = parseInt(document.getElementById('f-year-to').value)   || YMAX;
+  state.yearFrom = Math.min(yf, yt);
+  state.yearTo   = Math.max(yf, yt);
+  for (const v of VENUES) {
+    state.venueFilter[v] = document.getElementById('f-' + VENUE_IDS[v]).checked;
+  }
+  state.minCite = parseInt(document.getElementById('f-mincite').value) || 0;
+  state.titleTerms = [
+    document.getElementById('f-title-1').value,
+    document.getElementById('f-title-2').value,
+    document.getElementById('f-title-3').value,
+  ];
+  state.titleOp = document.getElementById('f-title-op').value;
+  state.author  = document.getElementById('f-author').value;
+  rerenderAll();
+}
+
+function resetFilters() {
+  document.getElementById('f-year-from').value = YMIN;
+  document.getElementById('f-year-to').value   = YMAX;
+  for (const v of VENUES) document.getElementById('f-' + VENUE_IDS[v]).checked = true;
+  document.getElementById('f-mincite').value = 0;
+  ['f-title-1','f-title-2','f-title-3','f-author'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-title-op').value = 'AND';
+  applyFilters();
+}
+
+// ─── SORT ───────────────────────────────────────────────────────────────────
+document.querySelectorAll('th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (state.sortKey === key) state.sortDesc = !state.sortDesc;
+    else { state.sortKey = key; state.sortDesc = (key === 'cites' || key === 'year'); }
+    filterAndSort();
+    renderTable();
+  });
+});
+
+// ─── VENUE CARDS ────────────────────────────────────────────────────────────
+function syncVenueCardStyles() {
+  const checked = {};
+  for (const v of VENUES) checked[v] = document.getElementById('f-' + VENUE_IDS[v]).checked;
+  const checkedList = VENUES.filter(v => checked[v]);
+  const isSoloed = checkedList.length === 1;
+  document.querySelectorAll('.venue-card').forEach(card => {
+    const vid = card.dataset.venueId;
+    const label = VENUES.find(v => VENUE_IDS[v] === vid);
+    card.classList.toggle('solo', isSoloed && checked[label]);
+    card.classList.toggle('dim', !checked[label] && checkedList.length < VENUES.length);
+  });
+}
+document.querySelectorAll('.venue-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const vid = card.dataset.venueId;
+    const targetId = 'f-' + vid;
+    const allBoxes = VENUES.map(v => document.getElementById('f-' + VENUE_IDS[v]));
+    const isSoloed = allBoxes.every(cb => cb.checked === (cb.id === targetId));
+    if (isSoloed) {
+      allBoxes.forEach(cb => cb.checked = true);
+    } else {
+      allBoxes.forEach(cb => cb.checked = (cb.id === targetId));
+    }
+    applyFilters();
+    syncVenueCardStyles();
+  });
+});
+VENUES.forEach(v => {
+  const cb = document.getElementById('f-' + VENUE_IDS[v]);
+  if (cb) cb.addEventListener('change', syncVenueCardStyles);
+});
+
+// ─── PAGINATION ─────────────────────────────────────────────────────────────
+document.getElementById('page-first').onclick = () => { state.page = 1; renderTable(); };
+document.getElementById('page-prev').onclick  = () => { state.page--; renderTable(); };
+document.getElementById('page-next').onclick  = () => { state.page++; renderTable(); };
+document.getElementById('page-last').onclick  = () => {
+  state.page = Math.ceil(state.filtered.length / state.pageSize); renderTable();
+};
+document.getElementById('page-size').onchange = (e) => {
+  state.pageSize = parseInt(e.target.value); state.page = 1; renderTable();
+};
+
+// ─── AUTO-APPLY ON CHANGE ───────────────────────────────────────────────────
+document.getElementById('btn-apply').onclick  = applyFilters;
+document.getElementById('btn-reset').onclick  = resetFilters;
+
+const _aChangeIds = ['f-year-from', 'f-year-to', 'f-mincite', 'f-title-op']
+  .concat(VENUES.map(v => 'f-' + VENUE_IDS[v]));
+_aChangeIds.forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters)
+);
+['f-title-1', 'f-title-2', 'f-title-3', 'f-author'].forEach(id => {
+  document.getElementById(id).addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') applyFilters();
+  });
+});
+
+document.getElementById('topk-select').addEventListener('change', renderVenueComparison);
+
+// ─── COMPARE MODE ───────────────────────────────────────────────────────────
+function applyFiltersB() {
+  const yf = parseInt(document.getElementById('f-year-from-b').value) || YMIN;
+  const yt = parseInt(document.getElementById('f-year-to-b').value)   || YMAX;
+  state.filterB.yearFrom = Math.min(yf, yt);
+  state.filterB.yearTo   = Math.max(yf, yt);
+  for (const v of VENUES) {
+    state.filterB.venueFilter[v] = document.getElementById('f-' + VENUE_IDS[v] + '-b').checked;
+  }
+  state.filterB.minCite = parseInt(document.getElementById('f-mincite-b').value) || 0;
+  state.filterB.titleTerms = [
+    document.getElementById('f-title-1-b').value,
+    document.getElementById('f-title-2-b').value,
+    document.getElementById('f-title-3-b').value,
+  ];
+  state.filterB.titleOp = document.getElementById('f-title-op-b').value;
+  state.filterB.author  = document.getElementById('f-author-b').value;
+  state.filteredB = computeFiltered(state.filterB);
+  document.getElementById('result-info-b').textContent =
+    `Showing ${state.filteredB.length.toLocaleString()} / ${ALL.length.toLocaleString()} papers`;
+  if (state.compareMode) renderBarChart();
+}
+
+function resetFiltersB() {
+  document.getElementById('f-year-from-b').value = YMIN;
+  document.getElementById('f-year-to-b').value   = YMAX;
+  for (const v of VENUES) document.getElementById('f-' + VENUE_IDS[v] + '-b').checked = true;
+  document.getElementById('f-mincite-b').value = 0;
+  ['f-title-1-b','f-title-2-b','f-title-3-b','f-author-b'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-title-op-b').value = 'AND';
+  applyFiltersB();
+}
+
+function copyFilterAtoBInputs() {
+  document.getElementById('f-year-from-b').value = document.getElementById('f-year-from').value;
+  document.getElementById('f-year-to-b').value   = document.getElementById('f-year-to').value;
+  for (const v of VENUES) {
+    const id = VENUE_IDS[v];
+    document.getElementById('f-' + id + '-b').checked = document.getElementById('f-' + id).checked;
+  }
+  document.getElementById('f-mincite-b').value = document.getElementById('f-mincite').value;
+  [1,2,3].forEach(i =>
+    document.getElementById('f-title-' + i + '-b').value = document.getElementById('f-title-' + i).value
+  );
+  document.getElementById('f-title-op-b').value = document.getElementById('f-title-op').value;
+  document.getElementById('f-author-b').value   = document.getElementById('f-author').value;
+}
+
+function toggleCompareMode() {
+  state.compareMode = !state.compareMode;
+  const btn        = document.getElementById('btn-compare');
+  const zoneB      = document.getElementById('filter-b-wrap');
+  const chartBCol  = document.getElementById('bar-b-col');
+  const labelA     = document.getElementById('zone-label-a');
+  const chartLabelA = document.getElementById('chart-label-a');
+  const hint       = document.getElementById('compare-hint');
+  const lockLabel  = document.getElementById('lock-y-axis-label');
+
+  btn.classList.toggle('active', state.compareMode);
+  btn.textContent = state.compareMode ? '✕ Compare mode' : '+ Compare mode';
+  hint.textContent = state.compareMode
+    ? 'Change filter B below to contrast against filter A.'
+    : 'Add a second filter zone to compare two trends side by side';
+  zoneB.style.display        = state.compareMode ? '' : 'none';
+  chartBCol.style.display    = state.compareMode ? '' : 'none';
+  document.getElementById('bar-overlay-col').style.display = state.compareMode ? '' : 'none';
+  labelA.style.display       = state.compareMode ? '' : 'none';
+  chartLabelA.style.display  = state.compareMode ? '' : 'none';
+  lockLabel.style.display    = state.compareMode ? '' : 'none';
+
+  if (state.compareMode) {
+    copyFilterAtoBInputs();
+    applyFiltersB();
+  }
+  renderBarChart();
+}
+
+document.getElementById('btn-apply-b').onclick  = applyFiltersB;
+document.getElementById('btn-reset-b').onclick  = resetFiltersB;
+document.getElementById('btn-compare').onclick  = toggleCompareMode;
+document.getElementById('lock-y-axis').addEventListener('change', (e) => {
+  state.shareYAxis = e.target.checked;
+  renderBarChart();
+});
+
+const _bChangeIds = ['f-year-from-b', 'f-year-to-b', 'f-mincite-b', 'f-title-op-b']
+  .concat(VENUES.map(v => 'f-' + VENUE_IDS[v] + '-b'));
+_bChangeIds.forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFiltersB)
+);
+['f-title-1-b', 'f-title-2-b', 'f-title-3-b', 'f-author-b'].forEach(id => {
+  document.getElementById(id).addEventListener('keyup', (e) => {
+    if (e.key === 'Enter') applyFiltersB();
+  });
+});
+
+// Word cloud re-layout on window resize
+let wcResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(wcResizeTimer);
+  wcResizeTimer = setTimeout(renderWordCloud, 200);
+});
+
+// ─── ABSTRACT TOOLTIP (live OpenAlex fetch) ─────────────────────────────────
+const tooltip = document.getElementById('abstract-tooltip');
+const abstractCache = new Map();
+
+function reconstructAbstract(invIdx) {
+  if (!invIdx) return '';
+  let maxPos = -1;
+  for (const positions of Object.values(invIdx)) {
+    for (const p of positions) if (p > maxPos) maxPos = p;
+  }
+  const words = new Array(maxPos + 1).fill('');
+  for (const [word, positions] of Object.entries(invIdx)) {
+    for (const p of positions) if (p < words.length) words[p] = word;
+  }
+  return words.filter(w => w).join(' ');
+}
+
+function positionTooltip(rect) {
+  const tooltipW = 480, tooltipH = tooltip.offsetHeight || 200;
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  if (left + tooltipW > window.innerWidth - 10) left = window.innerWidth - tooltipW - 10;
+  if (top + tooltipH > window.innerHeight - 10) top = Math.max(10, rect.top - tooltipH - 6);
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top + 'px';
+}
+
+function showTooltip(html, rect) {
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  positionTooltip(rect);
+}
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+function renderAbstract(abs, rect) {
+  if (!abs) {
+    showTooltip('<div class="tt-head">Abstract</div><em>Not available on OpenAlex</em>', rect);
+    return;
+  }
+  const MAX = 650;
+  const truncated = abs.length > MAX ? escapeHtml(abs.slice(0, MAX)) + '…' : escapeHtml(abs);
+  showTooltip(`<div class="tt-head">Abstract</div>${truncated}`, rect);
+}
+
+let hoverDoi = null, hoverTimer = null, hoverCtrl = null;
+
+function handleEnter(a) {
+  const doi = a.dataset.doi;
+  if (!doi) return;
+  if (hoverCtrl) { hoverCtrl.abort(); hoverCtrl = null; }
+  clearTimeout(hoverTimer);
+  hoverDoi = doi;
+  const rect = a.getBoundingClientRect();
+  hoverTimer = setTimeout(async () => {
+    if (hoverDoi !== doi) return;
+    if (abstractCache.has(doi)) { renderAbstract(abstractCache.get(doi), rect); return; }
+    showTooltip('<div class="tt-head">Abstract</div><em>Loading…</em>', rect);
+    hoverCtrl = new AbortController();
+    try {
+      const r = await fetch(
+        `https://api.openalex.org/works/doi:${doi}?select=abstract_inverted_index&mailto=__CONTACT_EMAIL__`,
+        { signal: hoverCtrl.signal }
+      );
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const abs = reconstructAbstract(data.abstract_inverted_index);
+      abstractCache.set(doi, abs);
+      if (hoverDoi === doi) renderAbstract(abs, a.getBoundingClientRect());
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        abstractCache.set(doi, '');
+        if (hoverDoi === doi) renderAbstract('', a.getBoundingClientRect());
+      }
+    }
+  }, 220);
+}
+
+function handleLeave(e) {
+  const to = e.relatedTarget;
+  if (to && to.closest && to.closest('a[data-doi]')) return;
+  clearTimeout(hoverTimer);
+  if (hoverCtrl) { hoverCtrl.abort(); hoverCtrl = null; }
+  hoverDoi = null;
+  hideTooltip();
+}
+
+document.getElementById('tbody').addEventListener('mouseover', (e) => {
+  const a = e.target.closest('a[data-doi]');
+  if (a) handleEnter(a);
+});
+document.getElementById('tbody').addEventListener('mouseout', handleLeave);
+
+// Clicking an author populates the Author filter
+document.getElementById('tbody').addEventListener('click', (e) => {
+  const s = e.target.closest('.author-click');
+  if (!s) return;
+  e.preventDefault();
+  document.getElementById('f-author').value = s.dataset.author;
+  ['f-title-1','f-title-2','f-title-3'].forEach(id => document.getElementById(id).value = '');
+  applyFilters();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
 // ─── INIT ───────────────────────────────────────────────────────────────────
-applyFilters();
-document.getElementById('stat-total').textContent = fmtNum(RAW.length);
-// set sort arrow
-document.querySelector('th[data-col="cites"]').classList.add('sorted');
-document.querySelector('th[data-col="cites"] .arrow').textContent = ' ▼';
+rerenderAll();
 </script>
 </body>
 </html>"""
 
-# Fill in data
+# Fill placeholders
 paper_data_json = json.dumps(arr, ensure_ascii=False)
 wb_vocab_json   = json.dumps(wb_vocab, ensure_ascii=False)
 wb_papers_json  = json.dumps(wb_papers_slim, ensure_ascii=False)
 venues_cfg_json = json.dumps(VENUES_CFG, ensure_ascii=False)
 
 out = (HTML
-    .replace('__TITLE__',           TITLE_STR)
-    .replace('__AS_OF__',           AS_OF)
-    .replace('__YEAR_MIN__',        str(year_min))
-    .replace('__YEAR_MAX__',        str(year_max))
-    .replace('__RAW_JSON__',        paper_data_json)
-    .replace('__WB_VOCAB__',        wb_vocab_json)
-    .replace('__WB_PAPERS__',       wb_papers_json)
-    .replace('__VENUES_CFG_JSON__', venues_cfg_json)
-    .replace('__CARD_BORDER_CSS__', CARD_BORDER_CSS)
-    .replace('__VENUE_TEXT_CSS__',  VENUE_TEXT_CSS)
-    .replace('__SUMMARY_CARDS__',   SUMMARY_CARDS)
-    .replace('__FILTER_CHECKBOXES__', FILTER_CHECKBOXES)
+    .replace('__TITLE__',            TITLE_STR)
+    .replace('__AS_OF__',            AS_OF)
+    .replace('__YEAR_MIN__',         str(year_min))
+    .replace('__YEAR_MAX__',         str(year_max))
+    .replace('__TOTAL_FMT__',        f'{total:,}')
+    .replace('__CONTACT_EMAIL__',    'gisbi.kim@gmail.com')
+    .replace('__RAW_JSON__',         paper_data_json)
+    .replace('__WB_VOCAB__',         wb_vocab_json)
+    .replace('__WB_PAPERS__',        wb_papers_json)
+    .replace('__VENUES_CFG_JSON__',  venues_cfg_json)
+    .replace('__CARD_BORDER_CSS__',  CARD_BORDER_CSS)
+    .replace('__VENUE_TEXT_CSS__',   VENUE_TEXT_CSS)
+    .replace('__SUMMARY_CARDS__',    SUMMARY_CARDS)
+    .replace('__FILTER_A_CHECKBOXES__', FILTER_A_CHECKBOXES)
+    .replace('__FILTER_B_CHECKBOXES__', FILTER_B_CHECKBOXES)
 )
 
 with open('explorer.html', 'w', encoding='utf-8') as f:
     f.write(out)
 
-print(f"explorer.html 생성 완료 ({total:,} papers, {len(out)//1024} KB)")
+print(f"explorer.html generated ({total:,} papers, {len(out)/1024/1024:.1f} MB)")
