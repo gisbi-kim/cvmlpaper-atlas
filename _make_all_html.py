@@ -264,13 +264,13 @@ __VENUE_TEXT_CSS__
 <body>
 
 <div class="brand">
-  <a href="https://github.com/gisbi-kim/cvml-paper-atlas">CV+ML Paper Atlas</a>
+  <a href="https://github.com/gisbi-kim/cvmlpaper-atlas">CV+ML Paper Atlas</a>
 </div>
 <h1>__TITLE__</h1>
 <div class="sub">
-  <span>DBLP + OpenAlex · __TOTAL_FMT__ papers (DOI-deduped) · __YEAR_MIN__ ~ __YEAR_MAX__ · CVPR · ICCV · ECCV · NeurIPS · ICML · ICLR · 3DV</span>
+  <span>DBLP + Semantic Scholar · __TOTAL_FMT__ papers (DOI-deduped) · __YEAR_MIN__ ~ __YEAR_MAX__ · CVPR · ICCV · ECCV · NeurIPS · ICML · ICLR · 3DV</span>
   <span style="color:#888; text-align:right; line-height:1.4;">
-    Citations from OpenAlex · as of __AS_OF__
+    Citations from Semantic Scholar · as of __AS_OF__
   </span>
 </div>
 
