@@ -267,11 +267,14 @@ HTML = """\
 <head>
 <meta charset="UTF-8">
 <title>Co-authorship network — CV+ML Paper Atlas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Segoe UI", sans-serif; background: #0f1117; color: #e5e7eb; overflow: hidden; }
   canvas { display: block; background: #0f1117; }
+  #gl-canvas { position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none; }
+  #net       { position: fixed; top: 0; left: 0; z-index: 1; background: transparent !important; }
   .panel {
     position: fixed; background: rgba(17, 24, 39, 0.92); color: #e5e7eb;
     border: 1px solid #374151; border-radius: 8px; padding: 12px 14px;
@@ -544,6 +547,83 @@ const eScale = d3.scaleLog()
   .domain([META.min_edge_collabs, d3.max(edges, d => d.weight) || 10])
   .range([0.3, 3]);
 
+// =====================================================================
+// WebGL edge renderer (Three.js) — one draw call per edge style group.
+// Edges render on a WebGL canvas behind the Canvas 2D canvas.
+// Canvas 2D stays on top for nodes, labels, and all interaction.
+// =====================================================================
+const glCanvas = document.createElement('canvas');
+glCanvas.id = 'gl-canvas';
+document.body.insertBefore(glCanvas, canvas);
+glCanvas.width = width; glCanvas.height = height;
+
+const glRenderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: false, alpha: false });
+glRenderer.setPixelRatio(1);
+glRenderer.setSize(width, height, false);
+glRenderer.setClearColor(0x0f1117, 1);
+const glCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+const glScene  = new THREE.Scene();
+const MAX_E = allEdges.length;
+function makeLines(colorHex, opacity) {
+  const positions = new Float32Array(MAX_E * 6);
+  const geom = new THREE.BufferGeometry();
+  const attr = new THREE.BufferAttribute(positions, 3);
+  geom.setAttribute('position', attr);
+  geom.setDrawRange(0, 0);
+  const mat = new THREE.LineBasicMaterial({ color: colorHex, opacity, transparent: opacity < 1 });
+  const lines = new THREE.LineSegments(geom, mat);
+  glScene.add(lines);
+  return { lines, geom, attr, positions };
+}
+const GL = {
+  base:   makeLines(0x9ca3af, 0.35),
+  dim:    makeLines(0x9ca3af, 0.06),
+  comm:   makeLines(0x9ca3af, 0.55),
+  bgsel:  makeLines(0x9ca3af, 0.15),
+  t1:     makeLines(0x34d399, 1.00),
+  t2:     makeLines(0x818cf8, 0.85),
+  t3:     makeLines(0xf59e0b, 0.45),
+};
+function drawGL() {
+  let iN=0,iD=0,iC=0,iB=0,i1=0,i2=0,i3=0;
+  const bN=GL.base.positions, bD=GL.dim.positions, bC=GL.comm.positions, bB=GL.bgsel.positions;
+  const b1=GL.t1.positions,   b2=GL.t2.positions,  b3=GL.t3.positions;
+  const tk=transform.k, tx=transform.x, ty=transform.y;
+  const w2=2/width, h2=2/height;
+  const hasComm = !selectedNode && selectedCommunity != null;
+  const hasTier = selectedNode != null;
+  for (const e of edges) {
+    const ssx = (e.source.x * tk + tx) * w2 - 1;
+    const ssy = 1 - (e.source.y * tk + ty) * h2;
+    const eex = (e.target.x * tk + tx) * w2 - 1;
+    const eey = 1 - (e.target.y * tk + ty) * h2;
+    if (hasComm) {
+      if (e.source.community === selectedCommunity && e.target.community === selectedCommunity) {
+        bC[iC]=ssx;bC[iC+1]=ssy;bC[iC+2]=0;bC[iC+3]=eex;bC[iC+4]=eey;bC[iC+5]=0;iC+=6;
+      } else {
+        bD[iD]=ssx;bD[iD+1]=ssy;bD[iD+2]=0;bD[iD+3]=eex;bD[iD+4]=eey;bD[iD+5]=0;iD+=6;
+      }
+    } else if (hasTier) {
+      const tier = edgeTier.get(e);
+      if      (tier===1) { b1[i1]=ssx;b1[i1+1]=ssy;b1[i1+2]=0;b1[i1+3]=eex;b1[i1+4]=eey;b1[i1+5]=0;i1+=6; }
+      else if (tier===2) { b2[i2]=ssx;b2[i2+1]=ssy;b2[i2+2]=0;b2[i2+3]=eex;b2[i2+4]=eey;b2[i2+5]=0;i2+=6; }
+      else if (tier===3) { b3[i3]=ssx;b3[i3+1]=ssy;b3[i3+2]=0;b3[i3+3]=eex;b3[i3+4]=eey;b3[i3+5]=0;i3+=6; }
+      else               { bB[iB]=ssx;bB[iB+1]=ssy;bB[iB+2]=0;bB[iB+3]=eex;bB[iB+4]=eey;bB[iB+5]=0;iB+=6; }
+    } else {
+      bN[iN]=ssx;bN[iN+1]=ssy;bN[iN+2]=0;bN[iN+3]=eex;bN[iN+4]=eey;bN[iN+5]=0;iN+=6;
+    }
+  }
+  GL.base.attr.needsUpdate=true;  GL.base.geom.setDrawRange(0, iN/3);
+  GL.dim.attr.needsUpdate=true;   GL.dim.geom.setDrawRange(0, iD/3);
+  GL.comm.attr.needsUpdate=true;  GL.comm.geom.setDrawRange(0, iC/3);
+  GL.bgsel.attr.needsUpdate=true; GL.bgsel.geom.setDrawRange(0, iB/3);
+  GL.t1.attr.needsUpdate=true;    GL.t1.geom.setDrawRange(0, i1/3);
+  GL.t2.attr.needsUpdate=true;    GL.t2.geom.setDrawRange(0, i2/3);
+  GL.t3.attr.needsUpdate=true;    GL.t3.geom.setDrawRange(0, i3/3);
+  glRenderer.render(glScene, glCamera);
+}
+// =====================================================================
+
 let adjacency = new Map();
 let nodeDegree = new Map();
 function buildAdjacency() {
@@ -623,71 +703,12 @@ const zoom = d3.zoom().scaleExtent([0.02, 8]).on('zoom', (e) => {
 d3.select(canvas).call(zoom);
 
 function draw() {
+  drawGL();  // edges via WebGL (one draw call per style group)
+
   ctx.save();
   ctx.clearRect(0, 0, width, height);
   ctx.translate(transform.x, transform.y);
   ctx.scale(transform.k, transform.k);
-
-  ctx.lineCap = 'round';
-  const wMult = Math.max(1, 1 / transform.k);
-  const TIER_STYLE = {
-    1: { color: '#34d399', alpha: 1.0,  w: 2.4 },
-    2: { color: '#818cf8', alpha: 0.85, w: 1.5 },
-    3: { color: '#f59e0b', alpha: 0.45, w: 0.9 },
-  };
-  if (!selectedNode && selectedCommunity != null) {
-    ctx.strokeStyle = 'rgba(156, 163, 175, 0.06)';
-    for (const e of edges) {
-      if (e.source.community === selectedCommunity && e.target.community === selectedCommunity) continue;
-      ctx.beginPath();
-      ctx.lineWidth = eScale(e.weight) * wMult;
-      ctx.moveTo(e.source.x, e.source.y);
-      ctx.lineTo(e.target.x, e.target.y);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = 'rgba(156, 163, 175, 0.55)';
-    for (const e of edges) {
-      if (!(e.source.community === selectedCommunity && e.target.community === selectedCommunity)) continue;
-      ctx.beginPath();
-      ctx.lineWidth = eScale(e.weight) * wMult;
-      ctx.moveTo(e.source.x, e.source.y);
-      ctx.lineTo(e.target.x, e.target.y);
-      ctx.stroke();
-    }
-  } else if (!selectedNode) {
-    ctx.strokeStyle = 'rgba(156, 163, 175, 0.35)';
-    for (const e of edges) {
-      ctx.beginPath();
-      ctx.lineWidth = eScale(e.weight) * wMult;
-      ctx.moveTo(e.source.x, e.source.y);
-      ctx.lineTo(e.target.x, e.target.y);
-      ctx.stroke();
-    }
-  } else {
-    ctx.strokeStyle = 'rgba(156, 163, 175, 0.15)';
-    for (const e of edges) {
-      if (edgeTier.has(e)) continue;
-      ctx.beginPath();
-      ctx.lineWidth = eScale(e.weight) * wMult;
-      ctx.moveTo(e.source.x, e.source.y);
-      ctx.lineTo(e.target.x, e.target.y);
-      ctx.stroke();
-    }
-    for (const tier of [3, 2, 1]) {
-      const s = TIER_STYLE[tier];
-      ctx.globalAlpha = s.alpha;
-      ctx.strokeStyle = s.color;
-      for (const e of edges) {
-        if (edgeTier.get(e) !== tier) continue;
-        ctx.beginPath();
-        ctx.lineWidth = eScale(e.weight) * s.w * wMult;
-        ctx.moveTo(e.source.x, e.source.y);
-        ctx.lineTo(e.target.x, e.target.y);
-        ctx.stroke();
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
 
   const nodeMult = Math.min(8, Math.pow(Math.max(1 / transform.k, 1), 0.75));
   for (const n of nodes) {
@@ -1195,6 +1216,7 @@ sparsitySlider.oninput = (e) => {
 window.addEventListener('resize', () => {
   width = canvas.width = window.innerWidth;
   height = canvas.height = window.innerHeight;
+  glRenderer.setSize(width, height, false);
   simulation.force('center', d3.forceCenter(width / 2, height / 2));
   simulation.alpha(0.3).restart();
 });
