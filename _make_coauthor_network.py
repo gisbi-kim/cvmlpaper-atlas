@@ -275,6 +275,7 @@ HTML = """\
   canvas { display: block; }
   #gl-canvas { position: fixed; top: 0; left: 0; z-index: 0; pointer-events: none; }
   #net       { position: fixed; top: 0; left: 0; z-index: 1; }
+  .panel     { z-index: 10; }
   .panel {
     position: fixed; background: rgba(17, 24, 39, 0.92); color: #e5e7eb;
     border: 1px solid #374151; border-radius: 8px; padding: 12px 14px;
