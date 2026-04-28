@@ -1297,3 +1297,11 @@ document.querySelectorAll('input[name="cmode"]').forEach(r => {
 with open(OUT_HTML, 'w', encoding='utf-8') as f:
     f.write(HTML)
 print(f"Saved {OUT_HTML}")
+
+# Chain community enrichment so the JSON always ships with communities.
+import subprocess, sys
+enrich = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_enrich_communities.py')
+if os.path.exists(enrich):
+    print("\n→ Running _enrich_communities.py ...")
+    subprocess.run([sys.executable, enrich], check=True)
+
